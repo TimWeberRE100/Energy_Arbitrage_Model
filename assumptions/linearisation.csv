@@ -1,0 +1,220 @@
+System Type,Index 1 Name,Index 1 Value,Index 2 Name,Index 2 Value,Variable Name,Variable Value,
+BESS,i,1,null,null,a,0.075,
+BESS,i,2,null,null,a,0.075,
+BESS,i,3,null,null,a,0.075,
+BESS,i,4,null,null,a,0.075,
+BESS,i,5,null,null,a,0.075,
+BESS,i,6,null,null,a,0.075,
+BESS,i,7,null,null,a,0.075,
+BESS,i,8,null,null,a,0.075,
+BESS,i,9,null,null,a,0.4,
+BESS,j,1,null,null,b,0.075,
+BESS,j,2,null,null,b,0.075,
+BESS,j,3,null,null,b,0.075,
+BESS,j,4,null,null,b,0.075,
+BESS,j,5,null,null,b,0.075,
+BESS,j,6,null,null,b,0.075,
+BESS,j,7,null,null,b,0.075,
+BESS,j,8,null,null,b,0.075,
+BESS,j,9,null,null,b,0.4,
+BESS,i,1,null,null,sd,1.424917,
+BESS,i,2,null,null,sd,1.530777,
+BESS,i,3,null,null,sd,1.588993,
+BESS,i,4,null,null,sd,1.595277,
+BESS,i,5,null,null,sd,1.614256,
+BESS,i,6,null,null,sd,1.70079,
+BESS,i,7,null,null,sd,1.859218,
+BESS,i,8,null,null,sd,2.019106,
+BESS,i,9,null,null,sd,0,
+BESS,j,1,null,null,sc,1.424917,
+BESS,j,2,null,null,sc,1.530777,
+BESS,j,3,null,null,sc,1.588993,
+BESS,j,4,null,null,sc,1.595277,
+BESS,j,5,null,null,sc,1.614256,
+BESS,j,6,null,null,sc,1.70079,
+BESS,j,7,null,null,sc,1.859218,
+BESS,j,8,null,null,sc,2.019106,
+BESS,j,9,null,null,sc,0,
+BESS,m,1,null,null,c,12.5,
+BESS,m,2,null,null,c,12.5,
+BESS,m,3,null,null,c,12.5,
+BESS,m,4,null,null,c,12.5,
+BESS,m,5,null,null,c,12.5,
+BESS,m,6,null,null,c,12.5,
+BESS,m,7,null,null,c,12.5,
+BESS,m,8,null,null,c,12.5,
+BESS,m,1,null,null,d,12.5,
+BESS,m,2,null,null,d,12.5,
+BESS,m,3,null,null,d,12.5,
+BESS,m,4,null,null,d,12.5,
+BESS,m,5,null,null,d,12.5,
+BESS,m,6,null,null,d,12.5,
+BESS,m,7,null,null,d,12.5,
+BESS,m,8,null,null,d,12.5,
+BESS,m,1,null,null,scLoss,0.085762,
+BESS,m,2,null,null,scLoss,0.13353,
+BESS,m,3,null,null,scLoss,0.188218,
+BESS,m,4,null,null,scLoss,0.25168,
+BESS,m,5,null,null,scLoss,0.326546,
+BESS,m,6,null,null,scLoss,0.416706,
+BESS,m,7,null,null,scLoss,0.528209,
+BESS,m,8,null,null,scLoss,0.671095,
+BESS,m,1,null,null,sdLoss,0.085762,
+BESS,m,2,null,null,sdLoss,0.13353,
+BESS,m,3,null,null,sdLoss,0.188218,
+BESS,m,4,null,null,sdLoss,0.25168,
+BESS,m,5,null,null,sdLoss,0.326546,
+BESS,m,6,null,null,sdLoss,0.416706,
+BESS,m,7,null,null,sdLoss,0.528209,
+BESS,m,8,null,null,sdLoss,0.671095,
+BESS M3,k,1,m,1,M3scLoss,0.06,
+BESS M3,k,1,m,2,M3scLoss,0.18,
+BESS M3,k,1,m,3,M3scLoss,0.24,
+BESS M3,k,1,m,4,M3scLoss,0.27,
+BESS M3,k,1,m,5,M3scLoss,0.3,
+BESS M3,k,1,m,6,M3scLoss,0.385,
+BESS M3,k,1,m,7,M3scLoss,0.479,
+BESS M3,k,1,m,8,M3scLoss,0.539,
+BESS M3,k,2,m,1,M3scLoss,0.03,
+BESS M3,k,2,m,2,M3scLoss,0.09,
+BESS M3,k,2,m,3,M3scLoss,0.12,
+BESS M3,k,2,m,4,M3scLoss,0.135,
+BESS M3,k,2,m,5,M3scLoss,0.15,
+BESS M3,k,2,m,6,M3scLoss,0.193,
+BESS M3,k,2,m,7,M3scLoss,0.24,
+BESS M3,k,2,m,8,M3scLoss,0.27,
+BESS M3,k,3,m,1,M3scLoss,0.027,
+BESS M3,k,3,m,2,M3scLoss,0.081,
+BESS M3,k,3,m,3,M3scLoss,0.108,
+BESS M3,k,3,m,4,M3scLoss,0.122,
+BESS M3,k,3,m,5,M3scLoss,0.135,
+BESS M3,k,3,m,6,M3scLoss,0.173,
+BESS M3,k,3,m,7,M3scLoss,0.216,
+BESS M3,k,3,m,8,M3scLoss,0.243,
+BESS M3,k,1,m,1,M3sdLoss,0.06,
+BESS M3,k,1,m,2,M3sdLoss,0.18,
+BESS M3,k,1,m,3,M3sdLoss,0.24,
+BESS M3,k,1,m,4,M3sdLoss,0.27,
+BESS M3,k,1,m,5,M3sdLoss,0.3,
+BESS M3,k,1,m,6,M3sdLoss,0.385,
+BESS M3,k,1,m,7,M3sdLoss,0.479,
+BESS M3,k,1,m,8,M3sdLoss,0.539,
+BESS M3,k,2,m,1,M3sdLoss,0.03,
+BESS M3,k,2,m,2,M3sdLoss,0.09,
+BESS M3,k,2,m,3,M3sdLoss,0.12,
+BESS M3,k,2,m,4,M3sdLoss,0.135,
+BESS M3,k,2,m,5,M3sdLoss,0.15,
+BESS M3,k,2,m,6,M3sdLoss,0.193,
+BESS M3,k,2,m,7,M3sdLoss,0.24,
+BESS M3,k,2,m,8,M3sdLoss,0.27,
+BESS M3,k,3,m,1,M3sdLoss,0.027,
+BESS M3,k,3,m,2,M3sdLoss,0.081,
+BESS M3,k,3,m,3,M3sdLoss,0.108,
+BESS M3,k,3,m,4,M3sdLoss,0.122,
+BESS M3,k,3,m,5,M3sdLoss,0.135,
+BESS M3,k,3,m,6,M3sdLoss,0.173,
+BESS M3,k,3,m,7,M3sdLoss,0.216,
+BESS M3,k,3,m,8,M3sdLoss,0.243,
+BESS M3,k,1,null,null,BSOC,0,
+BESS M3,k,2,null,null,BSOC,0.1,
+BESS M3,k,3,null,null,BSOC,0.5,
+PHS,m,1,null,null,d,0.01,
+PHS,m,2,null,null,d,0.22,
+PHS,m,3,null,null,d,0.22,
+PHS,m,4,null,null,d,0.22,
+PHS,m,5,null,null,d,0.22,
+PHS,m,6,null,null,d,0.01,
+PHS,m,7,null,null,d,0.15,
+PHS,m,8,null,null,d,0.15,
+PHS,m,1,null,null,scLoss,100,
+PHS,m,2,null,null,scLoss,0,
+PHS,m,3,null,null,scLoss,0,
+PHS,m,4,null,null,scLoss,0,
+PHS,m,5,null,null,scLoss,0,
+PHS,m,6,null,null,scLoss,-90,
+PHS,m,7,null,null,scLoss,0,
+PHS,m,8,null,null,scLoss,0,
+PHS,m,1,null,null,c,0.01,
+PHS,m,2,null,null,c,0.6749,
+PHS,m,3,null,null,c,0.01,
+PHS,m,4,null,null,c,0.1582,
+PHS,m,5,null,null,c,0.1468,
+PHS,m,6,null,null,c,0.1169,
+PHS,m,7,null,null,c,0.091,
+PHS,m,8,null,null,c,0.091,
+PHS,m,1,null,null,sdLoss,100,
+PHS,m,2,null,null,sdLoss,0,
+PHS,m,3,null,null,sdLoss,-83.6259,
+PHS,m,4,null,null,sdLoss,-0.31601,
+PHS,m,5,null,null,sdLoss,-0.24515,
+PHS,m,6,null,null,sdLoss,0.085575,
+PHS,m,7,null,null,sdLoss,0.362625,
+PHS,m,8,null,null,sdLoss,0.395591,
+BESS Test,i,1,null,null,a,0.02,0.075
+BESS Test,i,2,null,null,a,0.1,0.075
+BESS Test,i,3,null,null,a,0.1,0.075
+BESS Test,i,4,null,null,a,0.08,0.075
+BESS Test,i,5,null,null,a,0.1,0.075
+BESS Test,i,6,null,null,a,0.1,0.075
+BESS Test,i,7,null,null,a,0.1,0.075
+BESS Test,i,8,null,null,a,0.1,0.075
+BESS Test,i,9,null,null,a,0.3,0.4
+BESS Test,j,1,null,null,b,0.02,0.075
+BESS Test,j,2,null,null,b,0.1,0.075
+BESS Test,j,3,null,null,b,0.1,0.075
+BESS Test,j,4,null,null,b,0.08,0.075
+BESS Test,j,5,null,null,b,0.1,0.075
+BESS Test,j,6,null,null,b,0.1,0.075
+BESS Test,j,7,null,null,b,0.1,0.075
+BESS Test,j,8,null,null,b,0.1,0.075
+BESS Test,j,9,null,null,b,0.3,0.4
+BESS Test,i,1,null,null,sd,12.5,142.4917
+BESS Test,i,2,null,null,sd,4,153.0777
+BESS Test,i,3,null,null,sd,2,158.8993
+BESS Test,i,4,null,null,sd,1,159.5277
+BESS Test,i,5,null,null,sd,0.5,161.4256
+BESS Test,i,6,null,null,sd,0,170.079
+BESS Test,i,7,null,null,sd,-0.02,185.9218
+BESS Test,i,8,null,null,sd,-0.03,201.9106
+BESS Test,i,9,null,null,sd,-0.03,0
+BESS Test,j,1,null,null,sc,12.5,142.4917
+BESS Test,j,2,null,null,sc,4,153.0777
+BESS Test,j,3,null,null,sc,2,158.8993
+BESS Test,j,4,null,null,sc,1,159.5277
+BESS Test,j,5,null,null,sc,0.5,161.4256
+BESS Test,j,6,null,null,sc,0,170.079
+BESS Test,j,7,null,null,sc,-0.02,185.9218
+BESS Test,j,8,null,null,sc,-0.03,201.9106
+BESS Test,j,9,null,null,sc,-0.03,0
+BESS Test,m,1,null,null,c,1.67,12.5
+BESS Test,m,2,null,null,c,1.67,12.5
+BESS Test,m,3,null,null,c,1.67,12.5
+BESS Test,m,4,null,null,c,1.67,12.5
+BESS Test,m,5,null,null,c,1.67,12.5
+BESS Test,m,6,null,null,c,1.67,12.5
+BESS Test,m,7,null,null,c,1.67,12.5
+BESS Test,m,8,null,null,c,1.68,12.5
+BESS Test,m,1,null,null,d,1.67,12.5
+BESS Test,m,2,null,null,d,1.67,12.5
+BESS Test,m,3,null,null,d,1.67,12.5
+BESS Test,m,4,null,null,d,1.67,12.5
+BESS Test,m,5,null,null,d,1.67,12.5
+BESS Test,m,6,null,null,d,1.67,12.5
+BESS Test,m,7,null,null,d,1.67,12.5
+BESS Test,m,8,null,null,d,1.68,12.5
+BESS Test,m,1,null,null,scLoss,0.03,0.085762
+BESS Test,m,2,null,null,scLoss,0.09,0.13353
+BESS Test,m,3,null,null,scLoss,0.12,0.188218
+BESS Test,m,4,null,null,scLoss,0.135,0.25168
+BESS Test,m,5,null,null,scLoss,0.15,0.326546
+BESS Test,m,6,null,null,scLoss,0.193,0.416706
+BESS Test,m,7,null,null,scLoss,0.24,0.528209
+BESS Test,m,8,null,null,scLoss,0.27,0.671095
+BESS Test,m,1,null,null,sdLoss,0.03,0.085762
+BESS Test,m,2,null,null,sdLoss,0.09,0.13353
+BESS Test,m,3,null,null,sdLoss,0.12,0.188218
+BESS Test,m,4,null,null,sdLoss,0.135,0.25168
+BESS Test,m,5,null,null,sdLoss,0.15,0.326546
+BESS Test,m,6,null,null,sdLoss,0.193,0.416706
+BESS Test,m,7,null,null,sdLoss,0.24,0.528209
+BESS Test,m,8,null,null,sdLoss,0.27,0.671095

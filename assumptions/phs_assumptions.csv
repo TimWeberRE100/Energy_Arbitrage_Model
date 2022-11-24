@@ -1,0 +1,4 @@
+﻿Parameter,g1,g2,h1,h2
+P_rated [MW],100,100,100,100
+Q_peak [m3/s],63,63,80,80
+Efficiency_peak,0.91,0.91,0.925,0.925
