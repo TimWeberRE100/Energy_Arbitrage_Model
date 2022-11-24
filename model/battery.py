@@ -85,7 +85,8 @@ class battery:
 
         Returns
         -------
-        None
+        self.R_cell : float
+            Internal resistance of the cells.
 
         '''
         
@@ -101,6 +102,8 @@ class battery:
         # Calculate the internal resistance
         self.R_cell = self.R_cell_initial + self.R_cell_initial*(6.9656*(10**(-8))*np.exp(0.05022*self.temp)) * (2.897*np.exp(0.006614*SOC_avg*100))*(ST**0.8)/100
 
+        return self.R_cell
+
     def eff_volt(self):
         '''
         Calculate the voltage efficiency of the battery.
@@ -111,7 +114,8 @@ class battery:
 
         Returns
         -------
-        None
+        self.efficiency_volt : float
+            Voltage efficiency of the battery object.
 
         '''
         
@@ -126,6 +130,8 @@ class battery:
         # Voltage efficiency based on positive radicand
         else:
             self.efficiency_volt = 0.5 + (sqrt_var)**0.5
+        
+        return self.efficiency_volt
 
     def SOC_max_aged(self, delT): 
         '''
@@ -139,7 +145,8 @@ class battery:
 
         Returns
         -------
-        None
+        self.SOC_max : float
+            State of health of the battery object.
 
         '''
         # Define gas constant
@@ -200,3 +207,5 @@ class battery:
         
         # Update the state of health of the system
         self.SOC_max = 1 - self.SOC_max_loss_cal - self.SOC_max_loss_cyc
+
+        return self.SOC_max

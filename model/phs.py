@@ -1,4 +1,5 @@
 import numpy as np
+import constants as const
 
 class pump_turb:
     def __init__(self, unit_type, phs_assumptions, index):
@@ -19,6 +20,8 @@ class pump_turb:
         # Current state parameters initialised
         self.Q_previous = 0 # Flow rate from the previous interval [m^3/s]
         self.P_previous = 0 # Power from the previous interval [MW]
+        self.Q_t = 0 # Flow rate of the current interval [m^3/s]
+        self.P_t = 0 # Power of the current interval [MW]
 
 class phs:
     def __init__(self,assumptions, phs_assumptions):
@@ -78,7 +81,8 @@ class phs:
 
         Returns
         -------
-        None.
+        self.H_pl_t : float
+            Pump head loss based on pump flow rate for current dispatch interval.
 
         '''
         
@@ -94,6 +98,8 @@ class phs:
         K_pipe = (F_p*self.pump_penstock_l)/self.pump_penstock_d
         K_p = K_pipe + self.pump_K_fittings
         self.H_pl_t = K_p*(v_p**2)/(2*g) 
+
+        return self.H_pl_t
         
     def turbineHeadLoss(self):
         '''
@@ -105,7 +111,8 @@ class phs:
 
         Returns
         -------
-        None.
+        self.H_tl_t : float
+            Turbine head loss based on turbine flow rate for current dispatch interval.
 
         '''
         
@@ -126,6 +133,8 @@ class phs:
         else:
             self.H_tl_t = 0
 
+        return self.H_tl_t
+
     def pumpHead(self):
         '''
         Calculate the net head for the pumps.
@@ -136,43 +145,43 @@ class phs:
 
         Returns
         -------
-        None.
+        self.H_p_t : float
+            Net head for pump in dispatch interval
 
         '''
         
         # Calculate pump head
         self.H_p_t = (self.SOC_current*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - self.SOC_current)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) + self.H_pl_t
 
-    def Q_pump(chargingPower,eff_pump,H_pump,rho,gravity):
+        return self.H_p_t
+
+    def Q_pump(self, pump_index):
         '''
         Flow rate for a pump unit.
 
         Parameters
         ----------
-        chargingPower : float
-            Dispatch power of the pump.
-        eff_pump : float
-            Pump efficiency.
-        H_pump : float
-            Net head of pump.
-        rho : integer
-            Density of water [kg/m^3].
-        gravity : float
-            Acceleration due to gravity [m/s^2].
+        pump_index : integer
+            Index for the pump unit to which the flow rate corresponds.
 
         Returns
         -------
-        Q_pump_t : float
-            Pump flow rate during interval.
+        self.pumps[pump_index].Q_t : float
+            Pump flow rate during dispatch interval.
 
         '''
+
+        self.pumpHead()
         
-        if H_pump < 0:
-            Q_pump_t = 0
+        if self.H_p_t < 0:
+            self.pumps[pump_index].Q_t = 0
             
         else:    
-            Q_pump_t = (chargingPower*eff_pump*10**6)/(H_pump*rho*gravity)
-        return Q_pump_t
+            self.pumps[pump_index].Q_t = (self.pumps[pump_index].P_previous*self.pumps[pump_index].efficiency_peak*10**6)/(self.H_p_t*const.rho*const.gravity)
+        
+        self.Q_pump_penstock_t = sum([self.pumps[g].Q_t for g in range(1,self.g_range+1)])
+
+        return self.pumps[pump_index].Q_t
 
     def Q_turbine(dischargingPower,eff_turbine,H_turbine,rho,gravity):
         '''
