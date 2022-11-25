@@ -1,4 +1,7 @@
-def chargingModel(current_state,system_assumptions,dispatchInstructions,day,phs_assumptions,year):
+import memory
+import constants as const
+
+def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst):
     '''
     Perform the charging/discharging according to the dispatch instructions for the trading day.
 
@@ -25,127 +28,47 @@ def chargingModel(current_state,system_assumptions,dispatchInstructions,day,phs_
     '''
     
     # Define system level parameters
-    cycle_tracker = current_state["cycle_tracker"]
     daily_cycles = 0
-    system_type = system_assumptions["system_type"]
     
     # Define charging parameters
-    SOC_min = float(system_assumptions["SOC_min"])
-    delT = int(system_assumptions["Dispatch_interval_time"])/60
-    SOC_initial = current_state["SOC"]
+    delT = market_inst.dispatch_t/60
     
-    # Define starting charging and discharging powers
-    if current_state["Power"] < 0:
-        C_initial = -current_state["Power"]
-        D_initial = 0
-    else:
-        D_initial = current_state["Power"]
-        C_initial = 0
-    
-    # Define lists for tracking variables during the trading day
-    SOC_day = [SOC_initial]
-    chargingCapacity = [C_initial]
-    dischargingCapacity = [D_initial]
-    behaviour = [] # charge = -1, standby = 0, discharge = 1
-    headLossPump = []
-    headLossTurbine = []
-    headPump = []
-    headTurbine = []
-    flowRatePump = []
-    flowRateTurbine = []
-    efficiencyTurbineDay = []
-    dischargedEnergy = []
-    chargedEnergy = []
-    U_batt_day = []
-    eff_volt_day = []
-    calendarLossDay = []
-    cycleLossDay = []
-    R_cell_day = []
-    SOC_max_day = []
+    # Define memory for the day
+    daily_memory = memory.memory_daily(storage_system_inst)
     
     # Perform charging/discharging operation for each dispatch interval 
     for t in range(0,len(dispatchInstructions)):
-        # Define the previous interval's SOC
-        if t == 0:
-            SOC_t_pre = SOC_initial
-        else:
-            SOC_t_pre = SOC_day[-1]
-        
-        # Simple charging model
-        if system_type == 'General':
-            
-            # Define system parameters
-            Ce = int(system_assumptions["energy_capacity_faded"])
-            rho_ch = float(system_assumptions["efficiency_ch_general"])
-            rho_dis = float(system_assumptions["efficiency_dis_general"])
-                
-            # Create the test SOC update
-            if dispatchInstructions[t] < 0:
-                SOC_exp = SOC_t_pre - (1/Ce)*rho_ch*dispatchInstructions[t]*delT
-                behaviour.append(-1)
-            elif dispatchInstructions[t] > 0:
-                SOC_exp = SOC_t_pre - (1/Ce)*(1/rho_dis)*dispatchInstructions[t]*delT 
-                behaviour.append(1)
-            else:
-                SOC_exp = SOC_t_pre
-                behaviour.append(0)
-    
         # Perform the battery charging operation
-        elif system_type == 'BESS':
-        
-            # Define BESS parameters
-            Ce = int(system_assumptions["energy_capacity"])
-            eff_sys = float(system_assumptions["efficiency_sys"])
-            Temp = int(system_assumptions["Temp"])
-            R_cell_initial = float(system_assumptions["R_cell_initial"])
-            I_cyc = 0
-            N_series = int(system_assumptions["series_cells"])
+        if storage_system_inst.type == 'BESS':
             
-            # Define interval variables
-            U_cell = U_OCV(SOC_t_pre)
-            U_cell_nom = U_OCV(0.5)
-            CE_cell = float(system_assumptions["cell_energy_capacity [Ah]"])*U_cell_nom
-            R_cell_t_pre = R_cell(year,day,t,Temp,R_cell_initial,current_state)
-            U_batt = U_cell*N_series
-            U_batt_day.append(U_batt)
-            U_batt_nom = U_cell_nom*N_series
-            eff_volt_t = eff_volt(U_batt,R_cell_t_pre,eff_sys,dispatchInstructions[t],SOC_t_pre,Ce,U_batt_nom,CE_cell,U_cell_nom)
-            eff_volt_day.append(eff_volt_t)
+            # Update the battery attributes
+            storage_system_inst.SOC_pre = daily_memory.SOC_day[-1]
+            storage_system_inst.U_OCV_assign()
+            storage_system_inst.R_cell_calc()
+            storage_system_inst.eff_volt()
+
+            # Update the daily memory            
+            daily_memory.U_batt_day.append(storage_system_inst.U_batt)
+            daily_memory.eff_volt_day.append(storage_system_inst.efficiency_volt)
             
             # Create the test SOC update
             if dispatchInstructions[t] < 0:
-                SOC_exp = SOC_t_pre - (1/Ce)*eff_volt_t*eff_sys*dispatchInstructions[t]*delT
-                behaviour.append(-1)
+                SOC_exp = storage_system_inst.SOC_pre - (1/storage_system_inst.energy_capacity)*storage_system_inst.efficiency_volt*storage_system_inst.efficiency_sys*dispatchInstructions[t]*delT
+                daily_memory.behaviour.append(-1)
             elif dispatchInstructions[t] > 0:
-                SOC_exp = SOC_t_pre - (1/Ce)*(1/(eff_volt_t*eff_sys))*dispatchInstructions[t]*delT
-                behaviour.append(1)
+                SOC_exp = storage_system_inst.SOC_pre - (1/storage_system_inst.energy_capacity)*(1/(storage_system_inst.efficiency_volt*storage_system_inst.efficiency_sys))*dispatchInstructions[t]*delT
+                daily_memory.behaviour.append(1)
             else:
-                SOC_exp = SOC_t_pre
-                behaviour.append(0)
+                SOC_exp = storage_system_inst.SOC_pre
+                daily_memory.behaviour.append(0)
         
         # Perform the pumped hydro charging operation
-        elif system_type == 'PHS':
-            
-            # Define PHS parameters
-            volume_reservoir = int(system_assumptions["V_res_upper"])
-            rho = 997 # kg/m^3
-            gravity = 9.81 # m/s^2
-            g_index_range = int(system_assumptions["g_index_range"])
-            h_index_range = int(system_assumptions["h_index_range"])
-            rampTime_T_TNL = int(system_assumptions["RT_T_TNL"])
-            rampTime_TNL_P = int(system_assumptions["RT_TNL_P"])
-            rampTime_P_TNL = int(system_assumptions["RT_P_TNL"])
-            rampTime_TNL_T = int(system_assumptions["RT_TNL_T"])
-            Q_p_list_previous = current_state["Q_p_list_previous"]
-            Q_t_list_previous = current_state["Q_t_list_previous"]
-            
+        elif storage_system_inst.type == 'PHS':
             # Initialise parameters
-            H_pl_initial = 0
-            H_tl_initial = 0
-            head_turb = turbineHead(SOC_t_pre,system_assumptions,H_tl_initial)
-            head_pump = pumpHead(SOC_t_pre,system_assumptions,H_pl_initial)
-            efficiency_pump = 0.91
-            efficiency_turbine = 0.91
+            storage_system_inst.H_pl_t = 0
+            storage_system_inst.H_tl_t = 0
+            storage_system_inst.turbineHead()
+            storage_system_inst.pumpHead()
             
             # Charging behaviour
             if (sum(dispatchInstructions[t]) < 0):

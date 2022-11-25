@@ -25,16 +25,13 @@ import lcos
 # Import results modules
 import volatility
 
-def dailySimulation(system_assumptions,linearisation_df,SP,DP,day,year,current_state,total_days_cumulative,phs_assumptions,year_count,imperfectSP,forecasting_horizon,offer_list,bid_list):
+def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,forecasting_horizon,storage_system_inst, participant_inst, market_inst):
+    
     '''
     Simulate arbitrage over one trading day.
 
     Parameters
     ----------
-    system_assumptions : dictionary
-        Dictionary of assumed parameters for the system.
-    linearisation_df : DataFrame
-        Dataframe of the linearisation parameters for the piecewise linear functions.
     SP : list
         List of spot prices for all trading intervals in the year.
     DP : list
@@ -43,22 +40,20 @@ def dailySimulation(system_assumptions,linearisation_df,SP,DP,day,year,current_s
         Count of days in the year at the current trading day.
     year : integer
         Year for which price data belongs.
-    current_state : dictionary
-        Dictionary of variables describing the current state of the system at the start of the trading day.
     total_days_cumulative : integer
         Count of days in the simulation at the current trading day.
-    phs_assumptions : dictionary
-        Dictionary of assumed parameters for the PHS turbines and pumps.
     year_count : integer
         Count of iterations of the year at the current trading day.
     imperfectSP : list
         List of imperfectly forecast spot prices for all trading intervals in the year.
     forecasting_horizon : integer
         Number of trading intervals which the scheduling model optimises at once.
-    offer_list : list
-        List of lists containing generator offer price bands for each day in the year.
-    bid_list : list
-        List of lists containing load price bands for each day in the year.
+    storage_system_inst : storage_system
+        Object containing storage system parameters and current state.
+    participant_inst : participant
+        Object containing market participant parameters.
+    market_inst : market
+        Object containing market parameters.
 
     Returns
     -------
@@ -77,33 +72,33 @@ def dailySimulation(system_assumptions,linearisation_df,SP,DP,day,year,current_s
     # bid_PB = [16000]
     
     # Define bid/offer price bands
-    if system_assumptions["system_type"] == "BESS":
-        offer_PB = offer_list[total_days_cumulative+day - (365*6+366*2)][1:11]
-        bid_PB = bid_list[total_days_cumulative+day - (365*6+366*2)][1:11]
+    if storage_system_inst.type == "BESS":
+        offer_PB = participant_inst.offers[total_days_cumulative+day - (365*6+366*2)][1:11]
+        bid_PB = participant_inst.bids[total_days_cumulative+day - (365*6+366*2)][1:11]
     else:
-        offer_PB = offer_list[total_days_cumulative+day][1:11]
-        bid_PB = bid_list[total_days_cumulative+day][1:11]
+        offer_PB = participant_inst.offers[total_days_cumulative+day][1:11]
+        bid_PB = participant_inst.bids[total_days_cumulative+day][1:11]
     
     offer_PB.reverse()
 
     # Run the optimisation solver to determine dispatch instructions
-    dispatch_bidsOffers = scheduling.schedulingModel(system_assumptions,linearisation_df, imperfectSP_day,day, offer_PB, bid_PB, current_state, phs_assumptions,forecasting_horizon)      
+    dispatch_bidsOffers = scheduling.schedulingModel(imperfectSP_day,day, offer_PB, bid_PB, forecasting_horizon, storage_system_inst, participant_inst, market_inst)      
     
     # Run the bids and offers through the central dispatch model
-    dispatchInstructions = dispatch.dispatchModel(dispatch_bidsOffers,DP_day,SP_day,system_assumptions)
+    dispatchInstructions = dispatch.dispatchModel(dispatch_bidsOffers,DP_day,SP_day,storage_system_inst)
     
     # Send the dispatch instructions to the charging model
-    chargingResults = charging.chargingModel(current_state,system_assumptions,dispatchInstructions[0],day,phs_assumptions,year_count)
-    current_state["SOC"] = chargingResults[0][-1] 
-    current_state["Power"] = chargingResults[3]
+    chargingResults = charging.chargingModel(dispatchInstructions[0],day,year_count, storage_system_inst)
+    storage_system_inst.SOC_current = chargingResults[0][-1] 
+    storage_system_inst.P_current = chargingResults[3]
     dispatchedCapacity = [chargingResults[1],chargingResults[2]]
     dispatchedEnergy = [chargingResults[4],chargingResults[5]]
     daily_cycles = chargingResults[6]
     
     # Determine settlement from actual charging behaviour 
-    TA_day = settlement.settlementModel(system_assumptions,dispatchedEnergy,SP_day)
+    TA_day = settlement.settlementModel(storage_system_inst,dispatchedEnergy,SP_day)
         
-    return [dispatchedCapacity,TA_day,current_state,SP_day,daily_cycles]
+    return [dispatchedCapacity,TA_day,SP_day,daily_cycles]
 
 def main(ifilename):
     '''
@@ -144,6 +139,12 @@ def main(ifilename):
 
     storage_system_inst = storage_system(storage_system_type_inst, storage_system_gen_inst)
     
+    # Create market participant object
+    participant_inst = participant(system_assumptions)
+
+    # Create market object
+    market_inst = market(system_assumptions)
+
     # Define number of iterations
     if storage_system_inst.type == "BESS":
         iteration_number = storage_system_inst.lifetime
@@ -163,45 +164,9 @@ def main(ifilename):
     imperfectSP_List = list(SP_df['Regions '+region+' Trading Price ($/MWh)'])
     imperfectSP_List.extend(imperfectSP_List[0:(forecasting_horizon - 48)])
     
-    # Define T+0 offers and bids
-    if system_assumptions["system_type"] == "BESS":        ###### Only SA 2018 - 2020
-        offer_df = pd.read_csv('hornsdaleGenOffers.csv')        
-        bid_df = pd.read_csv('hornsdaleLoadBids.csv')
-    else:                                                  ###### Only QLD 2010 - 2020
-        offer_df = pd.read_csv('wivenhoeGenOffers.csv')        
-        bid_df = pd.read_csv('wivenhoeLoadBids.csv')
-    offer_list =  offer_df.values.tolist()
-    bid_list = bid_df.values.tolist()
-    
-    # Define initial state of system
-    current_state = {"SOC":float(system_assumptions["SOC_initial"]),
-                     "Power":float(system_assumptions["P_initial"]),
-                     "SOC_max":float(system_assumptions["SOC_max_initial"]),
-                     "Q_p_list_previous":g_ind*[0],
-                     "Q_t_list_previous":h_ind*[0],
-                     "P_p_list_previous":g_ind*[0],
-                     "P_t_list_previous":h_ind*[0],
-                     "R_cell":float(system_assumptions["R_cell_initial"]),
-                     "cycLossCurrentSum":0,
-                     "cycLossIntervals":0,
-                     "calLossCurrentSum":0,
-                     "calLossIntervals":0,
-                     "Ah_throughput":0,
-                     "calLossTime":0,
-                     "SOC_max_loss_cal":0,
-                     "SOC_max_loss_cyc":0,
-                     "SOC_sum": 0.5,
-                     "dispatch_intervals":0,
-                     "cycle_tracker":0}
-    
     for iteration in range(0,iteration_number):
-        # Create simulation memory blocks
-        annualDischargedEnergy = []
-        annualChargedEnergy = []
-        annual_TA_dis = []
-        annual_TA_ch = []
-        annual_SP = []
-        annual_dailyCycles = []
+        # Create annual memory
+        annual_memory = memory()
         
         # Define T+0 dispatch prices for region
         DP_df = pd.read_csv('DispatchPrices_'+str(year)+'.csv')
@@ -219,53 +184,57 @@ def main(ifilename):
         for day in range(0,total_days):
             print(ifilename, year, iteration, day)
             
-            dailyOutputs = dailySimulation(system_assumptions,linearisation_df,SP_List,DP_List,day,year,current_state,total_days_cumulative,phs_assumptions,iteration,imperfectSP_List,forecasting_horizon,offer_list,bid_list)
-            current_state = dailyOutputs[2]
+            dailyOutputs = dailySimulation(SP_List,DP_List,day,year,total_days_cumulative,iteration,imperfectSP_List,forecasting_horizon,storage_system_inst, participant_inst, market_inst)
             
-            if system_type == "PHS":
-                annualDischargedEnergy.append(sum([sum(dailyOutputs[0][0][t]) for t in range(0,288)])*(5/60))
-                annualChargedEnergy.append(sum([sum(dailyOutputs[0][1][t]) for t in range(0,288)])*(5/60))
+            if storage_system_inst.type == "PHS":
+                annual_memory.DischargedEnergy.append(sum([sum(dailyOutputs[0][0][t]) for t in range(0,288)])*(5/60))
+                annual_memory.ChargedEnergy.append(sum([sum(dailyOutputs[0][1][t]) for t in range(0,288)])*(5/60))
             else:
-                annualDischargedEnergy.append(sum(dailyOutputs[0][0])*(5/60))
-                annualChargedEnergy.append(sum(dailyOutputs[0][1])*(5/60))
+                annual_memory.DischargedEnergy.append(sum(dailyOutputs[0][0])*(5/60))
+                annual_memory.ChargedEnergy.append(sum(dailyOutputs[0][1])*(5/60))
             
-            annual_TA_dis.append(sum(dailyOutputs[1][0]))
-            annual_TA_ch.append(-sum(dailyOutputs[1][1]))
-            annual_SP.extend(dailyOutputs[3])
-            annual_dailyCycles.append(dailyOutputs[4])
+            annual_memory.TA_dis.append(sum(dailyOutputs[1][0]))
+            annual_memory.TA_ch.append(-sum(dailyOutputs[1][1]))
+            annual_memory.SP.extend(dailyOutputs[3])
+            annual_memory.dailyCycles.append(dailyOutputs[4])
                 
         # Determine end of year results for systems with no degradation, assuming same discharging each year
-        EOL_TA_dis.append(sum(annual_TA_dis))
-        EOL_TA_ch.append(sum(annual_TA_ch))
-        EOL_DischargedEnergy.append(sum(annualDischargedEnergy))
-        EOL_ChargedEnergy.append(sum(annualChargedEnergy))
-        EOL_capacityFactor.append(sum(annualDischargedEnergy) / (int(system_assumptions["power_capacity"]) * total_days * 24))
-        EOL_averageCycleTime.append(sum(annual_dailyCycles) / total_days)
-        EOL_finalSOCmax.append(current_state["SOC_max"])
-        EOL_finalRcell.append(current_state["R_cell"])
+        simulation_memory.TA_dis.append(sum(annual_memory.TA_dis))
+        simulation_memory.TA_ch.append(sum(annual_memory.TA_ch))
+        simulation_memory.DischargedEnergy.append(sum(annual_memory.DischargedEnergy))
+        simulation_memory.ChargedEnergy.append(sum(annual_memory.ChargedEnergy))
+        simulation_memory.capacityFactor.append(sum(annual_memory.DischargedEnergy) / (int(system_assumptions["power_capacity"]) * total_days * 24))
+        simulation_memory.averageCycleTime.append(sum(annual_memory.dailyCycles) / total_days)
+        simulation_memory.finalSOCmax.append(storage_system_inst.SOC_max)
+
+        if storage_system_inst.type == "BESS":
+            simulation_memory.finalRcell.append(storage_system_inst.R_cell)
+        else:
+            simulation_memory.finalRcell.append(0)
+
             
-        EOL_data.append([region,year,iteration+1,EOL_TA_dis[-1],EOL_TA_ch[-1],EOL_DischargedEnergy[-1],EOL_ChargedEnergy[-1],EOL_averageCycleTime[-1],EOL_capacityFactor[-1],EOL_finalSOCmax[-1],EOL_finalRcell[-1],"NA","NA","NA",forecasting_horizon,system_type,EOL])
+        simulation_memory.data.append([region,year,iteration+1,simulation_memory.TA_dis[-1],simulation_memory.TA_ch[-1],simulation_memory.DischargedEnergy[-1],simulation_memory.ChargedEnergy[-1],simulation_memory.averageCycleTime[-1],simulation_memory.capacityFactor[-1],simulation_memory.finalSOCmax[-1],simulation_memory.finalRcell[-1],"NA","NA","NA",forecasting_horizon,storage_system_inst.type,storage_system_inst.lifetime])
             
-        EOL_results = pd.DataFrame(data = EOL_data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
+        EOL_results = pd.DataFrame(data = simulation_memory.data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
         EOL_results.to_csv(results_filename)
             
         if system_assumptions["system_type"] != "BESS":
-            LCOS = EOL_LCOS(annualDischargedEnergy,annualChargedEnergy,annual_TA_dis,annual_TA_ch,system_assumptions,year)
+            LCOS = lcos.EOL_LCOS(annual_memory.DischargedEnergy,annual_memory.ChargedEnergy,annual_memory.TA_dis,annual_memory.TA_ch, storage_system_inst, year)
             RADP = LCOS[0]
             AADP = LCOS[1]
-            price_vol = volatility(annual_SP)
-            EOL_data.append([region,year,"EOL",EOL*EOL_TA_dis[-1],EOL*EOL_TA_ch[-1],EOL*EOL_DischargedEnergy[-1],EOL*EOL_ChargedEnergy[-1],EOL_averageCycleTime[-1],EOL_capacityFactor[-1],EOL_finalSOCmax[-1],EOL_finalRcell[-1],RADP,AADP,price_vol,forecasting_horizon,system_type,EOL])
-            EOL_results = pd.DataFrame(data = EOL_data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
+            price_vol = volatility(annual_memory.SP)
+            simulation_memory.data.append([region,year,"EOL",storage_system_inst.lifetime*simulation_memory.TA_dis[-1],storage_system_inst.lifetime*simulation_memory.TA_ch[-1],storage_system_inst.lifetime*simulation_memory.DischargedEnergy[-1],storage_system_inst.lifetime*simulation_memory.ChargedEnergy[-1],simulation_memory.averageCycleTime[-1],simulation_memory.capacityFactor[-1],simulation_memory.finalSOCmax[-1],simulation_memory.finalRcell[-1],RADP,AADP,price_vol,forecasting_horizon,storage_system_inst.type,storage_system_inst.lifetime])
+            EOL_results = pd.DataFrame(data = simulation_memory.data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
             EOL_results.to_csv(results_filename)
         
     # Determine EOL resultsfor BESS
     if system_assumptions["system_type"] == "BESS":
-        LCOS = EOL_LCOS_Deg(EOL_DischargedEnergy,EOL_ChargedEnergy,EOL_TA_dis,EOL_TA_ch,system_assumptions,year,EOL)
+        LCOS = lcos.EOL_LCOS_Deg(simulation_memory.DischargedEnergy,simulation_memory.ChargedEnergy,simulation_memory.TA_dis,simulation_memory.TA_ch,storage_system_inst,year,storage_system_inst.lifetime)
         RADP = LCOS[0]
         AADP = LCOS[1]
-        price_vol = volatility(annual_SP)
-        EOL_data.append([region,year,"EOL",sum(EOL_TA_dis),sum(EOL_TA_ch),sum(EOL_DischargedEnergy),sum(EOL_ChargedEnergy),np.average(EOL_averageCycleTime),sum(EOL_DischargedEnergy) / (int(system_assumptions["power_capacity"]) * EOL * total_days * 24),EOL_finalSOCmax[-1],EOL_finalRcell[-1],RADP,AADP,price_vol,forecasting_horizon,system_type,EOL])
-        EOL_results = pd.DataFrame(data = EOL_data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
+        price_vol = volatility(annual_memory.SP)
+        simulation_memory.data.append([region,year,"EOL",sum(simulation_memory.TA_dis),sum(simulation_memory.TA_ch),sum(simulation_memory.DischargedEnergy),sum(simulation_memory.ChargedEnergy),np.average(simulation_memory.averageCycleTime),sum(simulation_memory.DischargedEnergy) / (storage_system_inst.power_capacity * storage_system_inst.lifetime * total_days * 24),simulation_memory.finalSOCmax[-1],simulation_memory.finalRcell[-1],RADP,AADP,price_vol,forecasting_horizon,storage_system_inst.type,storage_system_inst.lifetime])
+        EOL_results = pd.DataFrame(data = simulation_memory.data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
         EOL_results.to_csv(results_filename) 
 
 if __name__ == '__main__':

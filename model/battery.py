@@ -50,7 +50,7 @@ class battery:
         self.U_cell = 0 # Open-circuit voltage of the cell [V]
         self.R_cell = 0 # Internal resistance of the cell [Ohms]
         self.U_batt = 0 # Open-circuit voltage of the battery [V]
-        self.efficiency_volt = 1 # Voltage efficiency of the battery (0,1]
+        self.efficiency_volt = self.eff_volt() # Voltage efficiency of the battery (0,1]
         self.I_filt = 0 # Filtered current through the cells [A]
 
     def U_OCV_assign(self):
@@ -67,7 +67,7 @@ class battery:
         None
 
         '''
-        self.U_cell = U_OCV_calc(self.SOC_current)
+        self.U_cell = U_OCV_calc(self.SOC_current_test)
         self.U_batt = self.U_cell * self.series_cells
 
     def R_cell_calc(self, year_count, day, dispatch_interval):
@@ -120,7 +120,7 @@ class battery:
         '''
         
         # Calculate the radicand
-        sqrt_var = 0.25 - (abs(self.P_current)/(self.efficiency_sys*self.SOC_current*self.energy_capacity))*((self.U_batt_nom/self.U_batt)**2)*self.R_cell*(self.cell_e*self.U_cell_nom)/self.U_cell_nom
+        sqrt_var = 0.25 - (abs(self.P_current)/(self.efficiency_sys*self.SOC_current_test*self.energy_capacity))*((self.U_batt_nom/self.U_batt)**2)*self.R_cell*(self.cell_e*self.U_cell_nom)/self.U_cell_nom
         
         # Error handling for negative radicand
         if sqrt_var < 0:

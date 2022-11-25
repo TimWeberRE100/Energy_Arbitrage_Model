@@ -1,6 +1,6 @@
 class market:
     def __init__(self, assumptions):
-        self.SPmin = -1000 # Price floor for the spot market [$/MWh]
-        self.SPmax = 15500 # Price ceiling for the spot market [$/MWh]
-        self.dispatch_t = 5 # Dispatch interval length [min]
+        self.SPmin = int(assumptions["SPmin"]) # Price floor for the spot market [$/MWh]
+        self.SPmax = int(assumptions["SPmax"]) # Price ceiling for the spot market [$/MWh]
+        self.dispatch_t = int(assumptions["Dispatch_interval_time"]) # Dispatch interval length [min]
         

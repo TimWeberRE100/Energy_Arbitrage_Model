@@ -1,17 +1,125 @@
 import pyomo.environ as pyo
 from pyomo.opt.results import SolverStatus
+import numpy as np
+import battery
+import constants as const
 
-def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,current_state,phs_assumptions,forecasting_horizon):
+def Pmax_ij_aged(SOC,Ubatt_SOC,storage_system_inst):
+    '''
+    Calculates the maximum power limit for a particular state of charge, accounting for efficiency fade.
+
+    Parameters
+    ----------
+    SOC : float
+        State of charge of the system.
+    Ubatt_SOC : float
+        Open-circuit voltage of the battery at the specified SOC.
+    storage_system_inst : storage_system
+        Object containing storage system parameters and current state.
+
+    Returns
+    -------
+    Pmax_current : float
+        Maximum power limit ensuring efficiency losses > 80%.
+
+    '''
+    numerator = ((storage_system_inst.efficiency_sys**2)/4) - (0.8 - 0.5*storage_system_inst.efficiency_sys)**2
+    denominator = storage_system_inst.efficiency_sys*((storage_system_inst.U_batt_nom/Ubatt_SOC)**2)*storage_system_inst.R_cell*storage_system_inst.cell_e*storage_system_inst.U_cell_nom
+    coefficient = SOC*storage_system_inst.energy_capacity*storage_system_inst.U_cell_nom
+    
+    Pmax_current = coefficient*(numerator/denominator)
+    
+    return Pmax_current
+
+def Ploss_m_aged(power,storage_system_inst):
+    '''
+    Calculates the power loss for a particular dispatch power, accounting for efficiency fade.
+
+    Parameters
+    ----------
+    power : integer
+        Dispatch power of the system [MW].
+    storage_system_inst : storage_system
+        Object containing storage system parameters and current state.
+
+    Returns
+    -------
+    Ploss_current : float
+        Power loss at the specified dispatch power.
+
+    '''
+    numerator = power*storage_system_inst.R_cell*storage_system_inst.cell_e*storage_system_inst.U_cell_nom
+    denominator = storage_system_inst.efficiency_sys*0.5*storage_system_inst.energy_capacity*storage_system_inst.U_cell_nom
+    radicand = 0.25 - numerator / denominator
+    
+    if radicand < 0:
+        eff_volt = 0.5
+    else:
+        eff_volt = 0.5 + np.sqrt(radicand)
+    
+    Ploss_current = (1-eff_volt*storage_system_inst.efficiency_sys)*power/(eff_volt*storage_system_inst.efficiency_sys)
+    
+    return Ploss_current
+
+def min_greaterThan(load_PB,SP_s,risk_level):
+    '''
+    Calculates the minimum load price band that is greater than the specified spot price, accounting
+    for the level of risk hedging.
+
+    Parameters
+    ----------
+    load_PB : list
+        The ordered list of up to 10 load price bands from smallest to largest [$/MWh].
+    SP_s : float
+        The forecast spot price for a trading interval [$/MWh].
+    risk_level : integer
+        Level of risk hedging (0 to 9), with lower lisk levels constituting price bands closer to
+        the spot price.
+
+    Returns
+    -------
+    float
+        The price band used for the load bid in the trading interval.
+
+    '''
+    for b in range(0,len(load_PB)):
+        if (load_PB[b] > SP_s) and (b + risk_level <= 9):
+            return load_PB[b+risk_level]
+    return load_PB[-1]
+
+def max_lessThan(gen_PB_reverse,SP_s,risk_level):
+    '''
+    Calculates the maximum generator price band that is lower than the specified spot price, accounting
+    for the level of risk hedging.
+
+    Parameters
+    ----------
+    gen_PB_reverse : list
+        The ordered list of up to 10 generator price bands [$/MWh] from largest to smallest.
+    SP_s : float
+        The forecast spot price for a trading interval [$/MWh].
+    risk_level : integer
+        Level of risk hedging (0 to 9), with lower lisk levels constituting price bands closer to
+        the spot price.
+
+    Returns
+    -------
+    float
+        The price band used for the generator offer in the trading interval.
+
+    '''
+    for o in range(0,len(gen_PB_reverse)):
+        if (gen_PB_reverse[o] < SP_s) and (o + risk_level <= 9):
+            return gen_PB_reverse[o+risk_level]
+    return gen_PB_reverse[-1]
+
+def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_inst, participant_inst, market_inst):
     '''
     Uses Pyomo library to define the model, then cbc (COIN-OR branch-and-cut) solver to optimise solution.
     Assumes dispatch capacities can be real numbers.
 
     Parameters
     ----------
-    system_assumptions : dictionary
-        Dictionary of assumed parameters for the system.
-    linearisation_df : DataFrame
-        Dataframe of piece-wise linear function parameters.
     SP : list
         Forecast spot prices for the scheduling period.
     day : integer
@@ -20,12 +128,14 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
         Ordered list of generator offer price bands for the day.
     bid_PB : list
         Ordered list of load bid price bands for the day.
-    current_state : dictionary
-        Dictionary containing variables that define the current state of the system.
-    phs_assumptions : dictionary
-        Dictionary of the PHS pump and turbine assumptions.
     forecasting_horizon : integer
         Number of trading intervals that scheduling module optimises the MILP.
+    storage_system_inst : storage_system
+        Object containing storage system parameters and current state.
+    participant_inst : participant
+        Object containing market participant parameters.
+    market_inst : market
+        Object containing market parameters.
 
     Returns
     -------
@@ -33,10 +143,6 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
         List of bid and offer capacities, bid and offer price bands, and scheduled behaviour.
 
     '''
-    
-    # Define system level parameters
-    system_type = system_assumptions["system_type"]
-    riskLevel = int(system_assumptions["risk_level"])
     
     # Create abstract model object
     model = pyo.AbstractModel()
@@ -46,35 +152,21 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
     model.s = pyo.RangeSet(1,s)
         
     # Define fixed parameters
-    model.mlf_load = pyo.Param(initialize=float(system_assumptions["mlf_load"]))
-    model.mlf_gen = pyo.Param(initialize=float(system_assumptions["mlf_gen"]))
-    model.dlf_load = pyo.Param(initialize=float(system_assumptions["dlf_load"]))
-    model.dlf_gen = pyo.Param(initialize=float(system_assumptions["dlf_gen"]))
-    model.delT = pyo.Param(initialize=(6*int(system_assumptions["Dispatch_interval_time"]))/60)
-    model.SOCmax = pyo.Param(initialize=float(current_state["SOC_max"]))
-    model.Pmin = pyo.Param(initialize=float(system_assumptions["P_min"]))
-    model.Pmax = pyo.Param(initialize=float(system_assumptions["P_max"]))
-    model.Ce = pyo.Param(initialize=int(system_assumptions["energy_capacity"]))
-    model.SOCinitial = pyo.Param(initialize=current_state["SOC"])
-    model.VOMd = pyo.Param(initialize=float(system_assumptions["VOMd"]))
-    model.VOMc = pyo.Param(initialize=float(system_assumptions["VOMc"]))
+    model.mlf_load = pyo.Param(initialize=storage_system_inst.mlf_load)
+    model.mlf_gen = pyo.Param(initialize=storage_system_inst.mlf_gen)
+    model.dlf_load = pyo.Param(initialize=storage_system_inst.dlf_load)
+    model.dlf_gen = pyo.Param(initialize=storage_system_inst.dlf_gen)
+    model.delT = pyo.Param(initialize=(6*storage_system_inst.dispatch_interval_mins)/60)
+    model.SOCmax = pyo.Param(initialize=storage_system_inst.SOC_max)
+    model.Pmin = pyo.Param(initialize=storage_system_inst.P_min)
+    model.Pmax = pyo.Param(initialize=storage_system_inst.P_max)
+    model.Ce = pyo.Param(initialize=storage_system_inst.energy_capacity)
+    model.SOCinitial = pyo.Param(initialize=storage_system_inst.SOC_current)
+    model.VOMd = pyo.Param(initialize=storage_system_inst.VOMd)
+    model.VOMc = pyo.Param(initialize=storage_system_inst.VOMc)
     
     # Define system specific parameters/variables
-    if system_type == 'General':
-        # Declare binary variables
-        model.ud = pyo.Var(model.s,within=pyo.Binary)
-        model.uc = pyo.Var(model.s,within=pyo.Binary)
-        
-        # Declare decision variables
-        model.D = pyo.Var(model.s,within=pyo.NonNegativeReals)
-        model.C = pyo.Var(model.s,within=pyo.NonNegativeReals)
-        
-        # Declare parameters
-        model.muCH = pyo.Param(initialize=float(system_assumptions["efficiency_ch_general"]))
-        model.muDIS = pyo.Param(initialize=float(system_assumptions["efficiency_dis_general"]))
-        model.SOCmin = pyo.Param(initialize=float(system_assumptions["SOC_min"]))
-        
-    elif system_type == 'BESS':
+    if storage_system_inst.type == 'BESS':
         # Declare index parameters and ranges
         j = 9
         i = 9
@@ -84,8 +176,7 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
         model.m = pyo.RangeSet(1,m) # 8
         
         # Declare other parameters
-        model.SOCmin = pyo.Param(initialize=float(system_assumptions["SOC_min"]))
-        model.degC = pyo.Param(initialize=float(system_assumptions["DegC"]))
+        model.SOCmin = pyo.Param(initialize=storage_system_inst.SOC_min)
         
         # Declare binary variables
         model.w = pyo.Var(model.s,within=pyo.Binary)
@@ -96,10 +187,10 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
         model.k = pyo.Var(model.s,within=pyo.Binary)
         
         # Declare linearisation parameters
-        a_df = linearParameterDF(linearisation_df, system_type, 'a')
-        b_df = linearParameterDF(linearisation_df, system_type, 'b')
-        c_df = linearParameterDF(linearisation_df, system_type, 'c')
-        d_df = linearParameterDF(linearisation_df, system_type, 'd')
+        a_df = storage_system_inst.a
+        b_df = storage_system_inst.b
+        c_df = storage_system_inst.c
+        d_df = storage_system_inst.d
 
         # Define SOC list for linearisation based on a and b
         SOC_list = np.cumsum(b_df)
@@ -108,22 +199,15 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
         Power_list = np.cumsum(c_df)
         
         # Define Pmax at each SOC        
-        Pmax_list = []
-        CE_batt = int(system_assumptions["energy_capacity"])
-        Ucell_nom = U_OCV(0.5)
-        eff_sys = float(system_assumptions["efficiency_sys"])
-        Ubatt_nom = int(system_assumptions["series_cells"])*Ucell_nom
-        R_cell = current_state["R_cell"]
-        CE_cell = float(system_assumptions["cell_energy_capacity [Ah]"])*Ucell_nom
-        
+        Pmax_list = []        
         for ii in range(0,len(a_df)):
-            Ubatt_SOC = int(system_assumptions["series_cells"])*U_OCV(SOC_list[ii])
-            Pmax_list.append(Pmax_ij_aged(SOC_list[ii],CE_batt,Ucell_nom,eff_sys,Ubatt_nom,Ubatt_SOC,R_cell,CE_cell) / int(system_assumptions["P_max"])) 
+            Ubatt_SOC = storage_system_inst.series_cells*battery.U_OCV_calc(SOC_list[ii])
+            Pmax_list.append(Pmax_ij_aged(SOC_list[ii],Ubatt_SOC,storage_system_inst) / storage_system_inst.P_max) 
         
         # Define Ploss at each power
         P_loss_list = []
         for mm in range(0,len(c_df)):
-            P_loss_list.append(Ploss_m_aged(Power_list[mm],CE_batt,Ucell_nom,eff_sys,R_cell,CE_cell)) 
+            P_loss_list.append(Ploss_m_aged(Power_list[mm],storage_system_inst)) 
         
         # Define all linearisation parameters
         def initialize_a(model,i):
@@ -173,13 +257,13 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
         model.D = pyo.Var(model.s,within=pyo.NonNegativeReals)
         model.C = pyo.Var(model.s,within=pyo.NonNegativeReals)
         
-    elif system_type == 'PHS':
+    elif storage_system_inst.type == 'PHS':
         # Declare index parameters and ranges
         j = 9
         i = 9
         m = 8
-        g = int(system_assumptions["g_index_range"])
-        h = int(system_assumptions["h_index_range"])
+        g = storage_system_inst.g_range
+        h = storage_system_inst.h_range
         model.m = pyo.RangeSet(1,m) # 8
         model.g = pyo.RangeSet(1,g) # 2
         model.h = pyo.RangeSet(1,h) # 2
@@ -190,10 +274,10 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
         model.zcLoss = pyo.Var(model.s,model.m,model.g,within=pyo.Binary)
         
         # Declare linearisation parameters
-        c_df = linearParameterDF(linearisation_df, system_type, 'c')
-        d_df = linearParameterDF(linearisation_df, system_type, 'd')
-        sdLoss_df = linearParameterDF(linearisation_df, system_type, 'sdLoss')
-        scLoss_df = linearParameterDF(linearisation_df, system_type, 'scLoss')
+        c_df = storage_system_inst.c
+        d_df = storage_system_inst.d
+        sdLoss_df = storage_system_inst.sdLoss
+        scLoss_df = storage_system_inst.scLoss
         
         def initialize_c(model,m):
             return {m:c_df[m-1] for m in model.m}
@@ -213,11 +297,11 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
                 
         # Declare individual pump/turbine parameters      
         def initialize_QpPeak(model,g):
-            return {g:phs_assumptions["g"+str(g)]["Q_peak [m3/s]"] for g in model.g}
+            return {g:storage_system_inst.pumps[g].Q_peak for g in model.g}
         model.QpPeak = pyo.Param(model.g,initialize=initialize_QpPeak,within=pyo.Any)
         
         def initialize_QtPeak(model,h):
-            return {h:phs_assumptions["h"+str(h)]["Q_peak [m3/s]"] for h in model.h}
+            return {h:storage_system_inst.turbines[h].Q_peak for h in model.h}
         model.QtPeak = pyo.Param(model.h,initialize=initialize_QtPeak,within=pyo.Any)
         
         # Decalare other variables
@@ -231,12 +315,12 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
         model.Qt = pyo.Var(model.s,model.h,within=pyo.NonNegativeReals)
         
         # Declare model-specific parameters
-        model.volume_reservoir = pyo.Param(initialize=int(system_assumptions["V_res_upper"]))
-        model.rho = pyo.Param(initialize=997) # kg/m^3
-        model.gravity = pyo.Param(initialize=9.8) #m/s^2
-        model.Hpeffective = pyo.Param(initialize=float(system_assumptions["H_p_effective"]))
-        model.Hteffective = pyo.Param(initialize=float(system_assumptions["H_t_effective"]))
-        model.SOCmin = pyo.Param(initialize=float(system_assumptions["SOC_min"]))
+        model.volume_reservoir = pyo.Param(initialize=storage_system_inst.V_res_u)
+        model.rho = pyo.Param(initialize=const.rho) # kg/m^3
+        model.gravity = pyo.Param(initialize=const.gravity) #m/s^2
+        model.Hpeffective = pyo.Param(initialize=storage_system_inst.H_p_effective)
+        model.Hteffective = pyo.Param(initialize=storage_system_inst.H_t_effective)
+        model.SOCmin = pyo.Param(initialize=storage_system_inst.SOC_min)
         
         # Declare decision variables
         model.D = pyo.Var(model.s,model.h,within=pyo.NonNegativeReals)
@@ -252,7 +336,7 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
     # Declare other decision variables
     model.SOC = pyo.Var(model.s)
     
-    if system_type == 'BESS':
+    if storage_system_inst.type == 'BESS':
         # Constraint: Maximum charging power
         def CMax_rule(model,s):
             return model.C[s] <= -model.Pmin*model.w[s]
@@ -414,7 +498,7 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
         # Constraint: Final SOC
         def finalSOC_rule(model,s):
             if s == max(model.s):
-                return model.SOC[s] == float(system_assumptions["SOC_initial"])
+                return model.SOC[s] == storage_system_inst.SOC_initial
             else:
                 return pyo.Constraint.Skip
         model.finalSOC = pyo.Constraint(model.s, rule=finalSOC_rule)
@@ -424,7 +508,7 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
             return sum(model.delT*model.SP[s][s]*(model.dlf_gen*model.mlf_gen*model.D[s] - model.dlf_load*model.mlf_load*model.C[s]) - (model.VOMd*model.Ed[s]) - (model.VOMc*model.Ec[s]) for s in model.s)
         model.arbitrageValue = pyo.Objective(rule=arbitrageValue_rule, sense = pyo.maximize)  
     
-    elif system_type == 'PHS':
+    elif storage_system_inst.type == 'PHS':
         
         # Constraint: Ensure pump only charges at peak flow rate
         def chargeMax_rule(model,s,g):
@@ -552,7 +636,7 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
         # Constraint: Final SOC
         def finalSOC_rule(model,s):
             if s == max(model.s):
-                return model.SOC[s] == float(system_assumptions["SOC_initial"])
+                return model.SOC[s] == storage_system_inst.SOC_initial
             else:
                 return pyo.Constraint.Skip
         model.finalSOC = pyo.Constraint(model.s, rule=finalSOC_rule)
@@ -569,7 +653,7 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
     instance = model.create_instance()
     
     # solverpath_exe='path/to/cbc'
-    solverpath_exe='C:\\Users\\peckh\\anaconda3\\Library\\bin\\cbc'
+    solverpath_exe='Computer\\usr\\bin\\cbc'
     
     opt = pyo.SolverFactory('cbc',executable=solverpath_exe)
     opt.options['seconds'] = 1200
@@ -589,7 +673,7 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
     EnergyC = []
     ws = []
     
-    if system_type == "PHS":
+    if storage_system_inst.type == "PHS":
     
         for g in instance.g:
             unit_g_capacities[str(g)] = []
@@ -598,7 +682,7 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
             unit_h_capacities[str(h)] = []
     
     for d in range(1,49):
-        if system_type == "PHS":
+        if storage_system_inst.type == "PHS":
             unit_h_subOffers = []
             unit_h_subFlows = []
             unit_h_losses = []
@@ -612,8 +696,8 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
                 
             for g in instance.g:
                 if instance.C[d,g].value > 0.1:
-                    unit_g_subBids.append(-int(phs_assumptions["g"+str(g)]["P_rated [MW]"]))
-                    unit_g_capacities[str(g)].append(-int(phs_assumptions["g"+str(g)]["P_rated [MW]"]))
+                    unit_g_subBids.append(-storage_system_inst.pumps[g].P_rated)
+                    unit_g_capacities[str(g)].append(-storage_system_inst.pumps[g].P_rated)
                 else:
                     unit_g_subBids.append(0)
                     unit_g_capacities[str(g)].append(0)
@@ -637,8 +721,8 @@ def schedulingModel(system_assumptions,linearisation_df,SP,day,offer_PB,bid_PB,c
             else:
                 Total_dispatch_cap.append(-instance.C[d].value)
             
-        dispatch_offers.append(max_lessThan(offer_PB,float(instance.SP[d][d]),riskLevel))
-        dispatch_bids.append(min_greaterThan(bid_PB,float(instance.SP[d][d]),riskLevel))
+        dispatch_offers.append(max_lessThan(offer_PB,float(instance.SP[d][d]),participant_inst.risk_level))
+        dispatch_bids.append(min_greaterThan(bid_PB,float(instance.SP[d][d]),participant_inst.risk_level))
         ws.append(instance.w[d].value)
         EnergyD.append(instance.Ed[d].value)
         EnergyC.append(instance.Ec[d].value)

@@ -9,6 +9,7 @@ class general_systems:
         self.SOC_min = float(assumptions["SOC_min"]) # Minimum allowable SOC of the system [0,1]
         self.SOC_max = float(assumptions["SOC_max_initial"]) # Maximum allowable SOC of the system [0,1]
         self.lifetime = int(assumptions["Lifetime"]) # Expected economic life of the system [years]
+        self.SOC_initial = float(assumptions["SOC_initial"])
 
         # Distributable unit parameters initialised
         self.mlf_load = float(assumptions["mlf_load"]) # Transmission loss factor for the load (0,2)
@@ -32,6 +33,8 @@ class general_systems:
         self.b = self.linearParameterDF(linear_assumptions, "b")
         self.c = self.linearParameterDF(linear_assumptions, "c")
         self.d = self.linearParameterDF(linear_assumptions, "d")
+        self.sdLoss = self.linearParameterDF(linear_assumptions, "sdLoss")
+        self.scLoss = self.linearParameterDF(linear_assumptions, "scLoss")
 
         # Current state parameters initialised
         self.dispatch_intervals = 0 # Number of dispatch intervals system has completed
@@ -40,6 +43,10 @@ class general_systems:
         self.P_current = 0 # Current power output by the system [MW]
         self.SOC_pre = 0.5 # Previous SOC of the system [0,1]
         self.P_pre = 0 # Previous power output by the system [MW]
+
+        # Test state parameters initialised
+        self.SOC_current_test = 0.5
+        self.P_current_test = 0
 
     def linearParameterDF(self, linearisation_df, parameterName):
         '''
