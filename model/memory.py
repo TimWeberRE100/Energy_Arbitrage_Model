@@ -39,3 +39,27 @@ class memory_daily:
         self.cycleLossDay = []
         self.R_cell_day = []
         self.SOC_max_day = []
+    
+    def update_phs(self, behaviour, headLossPump, headPump, flowRatePump, headLossTurbine, headTurbine, flowRateTurbine, efficiencyTurbineDay):
+        self.behaviour.append(behaviour)
+        self.headLossPump.append(headLossPump)
+        self.headPump.append(headPump)
+        self.flowRatePump.append(flowRatePump)
+        self.headLossTurbine.append(headLossTurbine)
+        self.headTurbine.append(headTurbine)
+        self.flowRateTurbine.append(flowRateTurbine)
+        self.efficiencyTurbineDay.append(efficiencyTurbineDay)
+
+    def update_bess(self, calendarLossDay, cycleLossDay, R_cell_day, SOC_max_day):
+        self.calendarLossDay.append(calendarLossDay)
+        self.cycleLossDay.append(cycleLossDay)
+        self.R_cell_day.append(R_cell_day)
+        self.SOC_max_day.append(SOC_max_day)     
+
+    def update_general(self, chargingCapacity, dischargingCapacity, chargedEnergy, dischargedEnergy, SOC_day):
+        self.chargingCapacity.append(chargingCapacity)
+        self.dischargingCapacity.append(dischargingCapacity)
+        self.chargedEnergy.append(chargedEnergy)
+        self.dischargedEnergy.append(dischargedEnergy)
+        self.SOC_day.append(SOC_day)
+

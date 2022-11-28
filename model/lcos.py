@@ -1,4 +1,4 @@
-def EOL_LCOS(annualDischargedEnergy,annualChargedEnergy,annual_TA_dis,annual_TA_ch,system_assumptions,Year):
+def EOL_LCOS(annualDischargedEnergy,annual_TA_dis,annual_TA_ch,storage_system_inst,Year):
     '''
     Calculate the LCOS metrics at the end of the year for the PHS.
 
@@ -23,19 +23,7 @@ def EOL_LCOS(annualDischargedEnergy,annualChargedEnergy,annual_TA_dis,annual_TA_
         List containing RADP and AADP.
 
     '''
-    
-    discountRate = float(system_assumptions["discountRate"])
-    i = float(system_assumptions["i"])
-    alpha = float(system_assumptions["alpha"])
-    OCCp = float(system_assumptions["OvernightCapitalCost (power)"])
-    OCCe = float(system_assumptions["OvernightCapitalCost (energy)"])
-    FOM = float(system_assumptions["FOM"])
-    VOMd = float(system_assumptions["VOMd"])
-    lifetime = int(system_assumptions["Lifetime"])
-    C_p = int(system_assumptions["power_capacity"])
-    C_e = int(system_assumptions["energy_capacity"])
-    OCC_other = int(system_assumptions["OtherOCC"])
-    
+        
     # Define annual parameter lists
     taxFactor_num = []
     RADP_num = []
@@ -45,11 +33,11 @@ def EOL_LCOS(annualDischargedEnergy,annualChargedEnergy,annual_TA_dis,annual_TA_
     AADP_den = []
     
     # Calculate total OCC
-    CAPEX = OCCp*C_p + OCCe*C_e + OCC_other
+    CAPEX = storage_system_inst.OCC_p*storage_system_inst.power_capacity + storage_system_inst.OCC_e*storage_system_inst.energy_capacity + storage_system_inst.OCC_f
     baseValue = CAPEX
     
     # Calculate annual parameters
-    for y in range(1,lifetime+1):
+    for y in range(1,storage_system_inst.lifetime+1):
         
         # Define number of days in year
         if Year % 4 == 0:
@@ -57,24 +45,24 @@ def EOL_LCOS(annualDischargedEnergy,annualChargedEnergy,annual_TA_dis,annual_TA_
         else:
             total_days = 365
         
-        d_y = (baseValue*(total_days/365)*(2/lifetime))/CAPEX
-        baseValue -= baseValue*(total_days/365)*(2/lifetime)
+        d_y = (baseValue*(total_days/365)*(2/storage_system_inst.lifetime))/CAPEX
+        baseValue -= baseValue*(total_days/365)*(2/storage_system_inst.lifetime)
         
-        taxFactor_num.append(d_y*(1+discountRate)**(-y))
-        RADP_num.append((FOM*C_p*1000+sum(annual_TA_ch))*(1+discountRate)**(-y))
-        RADP_den.append(sum(annualDischargedEnergy)*(1+discountRate)**(-y))
-        VOM_y.append(VOMd*(1+discountRate)**(-y))
-        AADP_num.append(sum(annual_TA_dis)*(1+discountRate)**(-y))
-        AADP_den.append(sum(annualDischargedEnergy)*(1+discountRate)**(-y))
+        taxFactor_num.append(d_y*(1+storage_system_inst.discountRate)**(-y))
+        RADP_num.append((storage_system_inst.FOM*storage_system_inst.power_capacity*1000+sum(annual_TA_ch))*(1+storage_system_inst.discountRate)**(-y))
+        RADP_den.append(sum(annualDischargedEnergy)*(1+storage_system_inst.discountRate)**(-y))
+        VOM_y.append(storage_system_inst.VOMd*(1+storage_system_inst.discountRate)**(-y))
+        AADP_num.append(sum(annual_TA_dis)*(1+storage_system_inst.discountRate)**(-y))
+        AADP_den.append(sum(annualDischargedEnergy)*(1+storage_system_inst.discountRate)**(-y))
     
     # Calculate LCOS parameters
-    taxFactor =(1-i-alpha*(1-i)*sum(taxFactor_num))/(1-alpha)
+    taxFactor =(1-storage_system_inst.i_credit-storage_system_inst.corp_tax*(1-storage_system_inst.i_credit)*sum(taxFactor_num))/(1-storage_system_inst.corp_tax)
     RADP = (CAPEX*taxFactor + sum(RADP_num))/sum(RADP_den)+sum(VOM_y)
     AADP = sum(AADP_num)/sum(AADP_den)
     
     return [RADP,AADP]
 
-def EOL_LCOS_Deg(simDischargedEnergy,simChargedEnergy,sim_TA_dis,sim_TA_ch,system_assumptions,Year,degredationLife):
+def EOL_LCOS_Deg(simDischargedEnergy,sim_TA_dis,sim_TA_ch,Year,storage_system_inst):
     '''
     Calculate the LCOS metrics at the end of the year for the BESS.
 
@@ -92,8 +80,6 @@ def EOL_LCOS_Deg(simDischargedEnergy,simChargedEnergy,sim_TA_dis,sim_TA_ch,syste
         Dictionary of assumed parameters for the system.
     Year : integer
         Year from which prices are used.
-    degredationLife : integer
-        Lifetime of the system in years assumed for calculating asset degradation tax deduction.
 
     Returns
     -------
@@ -101,19 +87,6 @@ def EOL_LCOS_Deg(simDischargedEnergy,simChargedEnergy,sim_TA_dis,sim_TA_ch,syste
         List containing RADP and AADP.
 
     '''
-    
-    # Define parameters
-    discountRate = float(system_assumptions["discountRate"])
-    i = float(system_assumptions["i"])
-    alpha = float(system_assumptions["alpha"])
-    OCCp = float(system_assumptions["OvernightCapitalCost (power)"])
-    OCCe = float(system_assumptions["OvernightCapitalCost (energy)"])
-    FOM = float(system_assumptions["FOM"])
-    VOMd = float(system_assumptions["VOMd"])
-    lifetime = degredationLife
-    C_p = int(system_assumptions["power_capacity"])
-    C_e = int(system_assumptions["energy_capacity"])
-    OCC_other = int(system_assumptions["OtherOCC"])
     
     # Define annual parameter lists
     taxFactor_num = []
@@ -124,29 +97,29 @@ def EOL_LCOS_Deg(simDischargedEnergy,simChargedEnergy,sim_TA_dis,sim_TA_ch,syste
     AADP_den = []
     
     # Calculate total OCC
-    CAPEX = OCCp*C_p + OCCe*C_e + OCC_other
+    CAPEX = storage_system_inst.OCC_p*storage_system_inst.power_capacity + storage_system_inst.OCC_e*storage_system_inst.energy_capacity + storage_system_inst.OCC_f
     baseValue = CAPEX
     
     # Calculate annual parameters
-    for y in range(1,lifetime+1):
+    for y in range(1,storage_system_inst.lifetime+1):
         # Define number of days in year
         if Year % 4 == 0:
             total_days = 366
         else:
             total_days = 365
         
-        d_y = (baseValue*(total_days/365)*(2/lifetime))/CAPEX
-        baseValue -= baseValue*(total_days/365)*(2/lifetime)
+        d_y = (baseValue*(total_days/365)*(2/storage_system_inst.lifetime))/CAPEX
+        baseValue -= baseValue*(total_days/365)*(2/storage_system_inst.lifetime)
         
-        taxFactor_num.append(d_y*(1+discountRate)**(-y))
-        RADP_num.append((FOM*C_p*1000+sim_TA_ch[y-1])*(1+discountRate)**(-y))
-        RADP_den.append(simDischargedEnergy[y-1]*(1+discountRate)**(-y))
-        VOM_y.append(VOMd*(1+discountRate)**(-y))
-        AADP_num.append(sim_TA_dis[y-1]*(1+discountRate)**(-y))
-        AADP_den.append(simDischargedEnergy[y-1]*(1+discountRate)**(-y))
+        taxFactor_num.append(d_y*(1+storage_system_inst.discountRate)**(-y))
+        RADP_num.append((storage_system_inst.FOM*storage_system_inst.power_capacity*1000+sim_TA_ch[y-1])*(1+storage_system_inst.discountRate)**(-y))
+        RADP_den.append(simDischargedEnergy[y-1]*(1+storage_system_inst.discountRate)**(-y))
+        VOM_y.append(storage_system_inst.VOMd*(1+storage_system_inst.discountRate)**(-y))
+        AADP_num.append(sim_TA_dis[y-1]*(1+storage_system_inst.discountRate)**(-y))
+        AADP_den.append(simDischargedEnergy[y-1]*(1+storage_system_inst.discountRate)**(-y))
     
     # Calculate LCOS parameters
-    taxFactor =(1-i-alpha*(1-i)*sum(taxFactor_num))/(1-alpha)
+    taxFactor =(1-storage_system_inst.i_credit-storage_system_inst.corp_tax*(1-storage_system_inst.i_credit)*sum(taxFactor_num))/(1-storage_system_inst.corp_tax)
     RADP = (CAPEX*taxFactor + sum(RADP_num))/sum(RADP_den)+sum(VOM_y)
     AADP = sum(AADP_num)/sum(AADP_den)
     

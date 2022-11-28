@@ -1,5 +1,3 @@
-########    REMOVE THESE IMPORTS IF THEY ARE NOT SPECIFICALLY RELEVANT TO MAIN. MOVE TO RELEVANT MODULES
-
 # Import external libraries
 import pandas as pd
 import numpy as np
@@ -68,16 +66,16 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
     DP_day = DP[(day*288):(288+day*288)]
     
     # Bid and offer price bands for no risk hedging
-    # offer_PB = [-1000]
-    # bid_PB = [16000]
+    offer_PB = [-1000]
+    bid_PB = [16000]
     
     # Define bid/offer price bands
-    if storage_system_inst.type == "BESS":
-        offer_PB = participant_inst.offers[total_days_cumulative+day - (365*6+366*2)][1:11]
-        bid_PB = participant_inst.bids[total_days_cumulative+day - (365*6+366*2)][1:11]
-    else:
-        offer_PB = participant_inst.offers[total_days_cumulative+day][1:11]
-        bid_PB = participant_inst.bids[total_days_cumulative+day][1:11]
+    # if storage_system_inst.type == "BESS":
+    #     offer_PB = participant_inst.offers[total_days_cumulative+day - (365*6+366*2)][1:11]
+    #     bid_PB = participant_inst.bids[total_days_cumulative+day - (365*6+366*2)][1:11]
+    # else:
+    #     offer_PB = participant_inst.offers[total_days_cumulative+day][1:11]
+    #     bid_PB = participant_inst.bids[total_days_cumulative+day][1:11]
     
     offer_PB.reverse()
 
@@ -89,16 +87,15 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
     
     # Send the dispatch instructions to the charging model
     chargingResults = charging.chargingModel(dispatchInstructions[0],day,year_count, storage_system_inst)
-    storage_system_inst.SOC_current = chargingResults[0][-1] 
-    storage_system_inst.P_current = chargingResults[3]
-    dispatchedCapacity = [chargingResults[1],chargingResults[2]]
-    dispatchedEnergy = [chargingResults[4],chargingResults[5]]
-    daily_cycles = chargingResults[6]
+    dispatchedCapacity = [chargingResults[0].dischargingCapacity,chargingResults[0].chargingCapacity]
+    dispatchedEnergy = [chargingResults[0].dischargedEnergy,chargingResults[0].chargedEnergy]
+    daily_cycles = chargingResults[1]
+    storage_system_inst = chargingResults[2]
     
     # Determine settlement from actual charging behaviour 
     TA_day = settlement.settlementModel(storage_system_inst,dispatchedEnergy,SP_day)
         
-    return [dispatchedCapacity,TA_day,SP_day,daily_cycles]
+    return dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst
 
 def main(ifilename):
     '''
@@ -115,35 +112,35 @@ def main(ifilename):
 
     '''
     # Build system assumptions dictionary
-    system_assumptions = {pd.read_csv("Assumptions/"+ifilename+"_ASSUMPTIONS.csv")['Assumption'][i]:pd.read_csv("Assumptions/"+ifilename+"_ASSUMPTIONS.csv")['Value'][i] for i in range(0,len(pd.read_csv("Assumptions/"+ifilename+"_ASSUMPTIONS.csv")['Assumption']))}
+    system_assumptions = {pd.read_csv("assumptions/"+ifilename+"_ASSUMPTIONS.csv")['Assumption'][i]:pd.read_csv("assumptions/"+ifilename+"_ASSUMPTIONS.csv")['Value'][i] for i in range(0,len(pd.read_csv("assumptions/"+ifilename+"_ASSUMPTIONS.csv")['Assumption']))}
     
     # Build pumped hydro system assumption dictionary
-    phs_assumptions = {index:{pd.read_csv("phs_assumptions.csv")['Parameter'][i]:pd.read_csv("phs_assumptions.csv")[index][i] for i in range(0,len(pd.read_csv("phs_assumptions.csv")['Parameter']))} for index in pd.read_csv("phs_assumptions.csv").columns if index != 'Parameter'}
+    phs_assumptions = {index:{pd.read_csv("assumptions/phs_assumptions.csv")['Parameter'][i]:pd.read_csv("assumptions/phs_assumptions.csv")[index][i] for i in range(0,len(pd.read_csv("assumptions/phs_assumptions.csv")['Parameter']))} for index in pd.read_csv("assumptions/phs_assumptions.csv").columns if index != 'Parameter'}
     
     # Define linearisation parameters
-    linearisation_df = pd.read_csv('linearisation.csv')
+    linearisation_df = pd.read_csv('assumptions/linearisation.csv')
 
     # Define independent variables
     year = int(system_assumptions["Year"])
     region = system_assumptions["State"]             # NSW, QLD, SA, VIC, TAS
     forecasting_horizon = int(system_assumptions["forecasting_horizon"])  
-    results_filename = "Results/"+ifilename+"_RESULTS.csv"
+    results_filename = "results/"+ifilename+"_RESULTS.csv"
     
     # Create the storage system object
     if system_assumptions["system_type"] == "BESS":
-        storage_system_type_inst = battery(system_assumptions)
+        storage_system_type_inst = battery.battery(system_assumptions)
     elif system_assumptions["system_type"] == "PHS":
-        storage_system_type_inst = phs(system_assumptions, phs_assumptions)
+        storage_system_type_inst = phs.phs(system_assumptions, phs_assumptions)
     
-    storage_system_gen_inst = general_systems(system_assumptions, linearisation_df)
+    storage_system_gen_inst = general_systems.general_systems(system_assumptions, linearisation_df)
 
-    storage_system_inst = storage_system(storage_system_type_inst, storage_system_gen_inst)
+    storage_system_inst = storage_system.storage_system(storage_system_type_inst, storage_system_gen_inst)
     
     # Create market participant object
-    participant_inst = participant(system_assumptions)
+    participant_inst = participant.participant(system_assumptions)
 
     # Create market object
-    market_inst = market(system_assumptions)
+    market_inst = market.market(system_assumptions)
 
     # Define number of iterations
     if storage_system_inst.type == "BESS":
@@ -152,24 +149,24 @@ def main(ifilename):
         iteration_number = 1
     
     # Establish simulation memory
-    simulation_memory = memory()
+    simulation_memory = memory.memory()
     
     # Run the daily simulation for each day      
     # Define T+0 spot prices for region
-    SP_df = pd.read_csv('SpotPrices.csv')
+    SP_df = pd.read_csv('data/SpotPrices.csv')
     SP_List = list(SP_df['Regions '+region+' Trading Price ($/MWh)']) 
         
     # Define T+0 pre-dispatch prices for region
-    SP_df = pd.read_csv("predispatchSpotPrices.csv")
+    SP_df = pd.read_csv("data/predispatchSpotPrices.csv")
     imperfectSP_List = list(SP_df['Regions '+region+' Trading Price ($/MWh)'])
     imperfectSP_List.extend(imperfectSP_List[0:(forecasting_horizon - 48)])
     
     for iteration in range(0,iteration_number):
         # Create annual memory
-        annual_memory = memory()
+        annual_memory = memory.memory()
         
         # Define T+0 dispatch prices for region
-        DP_df = pd.read_csv('DispatchPrices_'+str(year)+'.csv')
+        DP_df = pd.read_csv('data/DispatchPrices_'+str(year)+'.csv')
         DP_List = list(DP_df['Regions '+region+' Dispatch Price ($/MWh)'])
         
         # Define number of days in year
@@ -197,6 +194,7 @@ def main(ifilename):
             annual_memory.TA_ch.append(-sum(dailyOutputs[1][1]))
             annual_memory.SP.extend(dailyOutputs[3])
             annual_memory.dailyCycles.append(dailyOutputs[4])
+            storage_system_inst = dailyOutputs[5]
                 
         # Determine end of year results for systems with no degradation, assuming same discharging each year
         simulation_memory.TA_dis.append(sum(annual_memory.TA_dis))
@@ -222,22 +220,23 @@ def main(ifilename):
             LCOS = lcos.EOL_LCOS(annual_memory.DischargedEnergy,annual_memory.ChargedEnergy,annual_memory.TA_dis,annual_memory.TA_ch, storage_system_inst, year)
             RADP = LCOS[0]
             AADP = LCOS[1]
-            price_vol = volatility(annual_memory.SP)
+            price_vol = volatility.volatility(annual_memory.SP)
             simulation_memory.data.append([region,year,"EOL",storage_system_inst.lifetime*simulation_memory.TA_dis[-1],storage_system_inst.lifetime*simulation_memory.TA_ch[-1],storage_system_inst.lifetime*simulation_memory.DischargedEnergy[-1],storage_system_inst.lifetime*simulation_memory.ChargedEnergy[-1],simulation_memory.averageCycleTime[-1],simulation_memory.capacityFactor[-1],simulation_memory.finalSOCmax[-1],simulation_memory.finalRcell[-1],RADP,AADP,price_vol,forecasting_horizon,storage_system_inst.type,storage_system_inst.lifetime])
             EOL_results = pd.DataFrame(data = simulation_memory.data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
             EOL_results.to_csv(results_filename)
         
     # Determine EOL resultsfor BESS
     if system_assumptions["system_type"] == "BESS":
-        LCOS = lcos.EOL_LCOS_Deg(simulation_memory.DischargedEnergy,simulation_memory.ChargedEnergy,simulation_memory.TA_dis,simulation_memory.TA_ch,storage_system_inst,year,storage_system_inst.lifetime)
+        LCOS = lcos.EOL_LCOS_Deg(simulation_memory.DischargedEnergy,simulation_memory.ChargedEnergy,simulation_memory.TA_dis,simulation_memory.TA_ch,storage_system_inst,year)
         RADP = LCOS[0]
         AADP = LCOS[1]
-        price_vol = volatility(annual_memory.SP)
+        price_vol = volatility.volatility(annual_memory.SP)
         simulation_memory.data.append([region,year,"EOL",sum(simulation_memory.TA_dis),sum(simulation_memory.TA_ch),sum(simulation_memory.DischargedEnergy),sum(simulation_memory.ChargedEnergy),np.average(simulation_memory.averageCycleTime),sum(simulation_memory.DischargedEnergy) / (storage_system_inst.power_capacity * storage_system_inst.lifetime * total_days * 24),simulation_memory.finalSOCmax[-1],simulation_memory.finalRcell[-1],RADP,AADP,price_vol,forecasting_horizon,storage_system_inst.type,storage_system_inst.lifetime])
         EOL_results = pd.DataFrame(data = simulation_memory.data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
         EOL_results.to_csv(results_filename) 
 
 if __name__ == '__main__':
+    '''
     # Create dataframe of filenames
     result_filenames = pd.read_csv("result_filenames.csv")["Filename"].values.tolist()
     
@@ -250,3 +249,6 @@ if __name__ == '__main__':
     # Spawn workers and run the embarassingly parallel processes
     with concurrent.futures.ProcessPoolExecutor(max_workers=workersCount) as executor:
         results = executor.map(main, result_filenames)
+    '''
+    
+    main("test")

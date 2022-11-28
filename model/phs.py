@@ -13,16 +13,19 @@ class pump_turb:
         # Constant parameters initialised
         self.type = unit_type # Whether the object is a pump or a turbine
         self.id = index_pref + str(index)
-        self.P_rated = phs_assumptions[id]["P_rated [MW]"] # Rated power of the pump/turbine [MW]
-        self.Q_peak = phs_assumptions[id]["Q_peak [m3/s]"] # Flow rate of the pump/turbine at peak efficiency [m^3/s]
-        self.efficiency_peak = phs_assumptions[id]["Efficiency_peak"] # Peak efficiency of the pump/turbine (0,1]
+        self.P_rated = int(phs_assumptions[id]["P_rated [MW]"]) # Rated power of the pump/turbine [MW]
+        self.Q_peak = int(phs_assumptions[id]["Q_peak [m3/s]"]) # Flow rate of the pump/turbine at peak efficiency [m^3/s]
+        self.efficiency_peak = float(phs_assumptions[id]["Efficiency_peak"]) # Peak efficiency of the pump/turbine (0,1]
 
         # Current state parameters initialised
         self.Q_previous = 0 # Flow rate from the previous interval [m^3/s]
         self.P_previous = 0 # Power from the previous interval [MW]
         self.Q_t = 0 # Flow rate of the current interval [m^3/s]
         self.P_t = 0 # Power of the current interval [MW]
-        self.efficiency_t = 0.91 # Efficiency of the unit
+        self.efficiency_t = 0.91 # Efficiency of the unit in the current dispatch interval
+        self.efficiency_previous = 0.91 # Efficiency of the unit in the previous dispatch interval
+        self.V_transient_adjust_t = 0 # Adjustment to reservoir volume based on the transient effects of ramping up/down [m^3]
+        self.RT_t = 0 # Ramp time for the unit in the dispatch interval [s]
 
 class phs:
     def __init__(self,assumptions, phs_assumptions):
@@ -72,6 +75,7 @@ class phs:
         self.H_tl_t = 0 # Current turbine head loss [m]
         self.H_p_t = 0 # Current pump head [m]
         self.H_t_t = 0 # Current turbine head [m]
+        self.efficiency_total_t = 0 # Current efficiency of the pumped hydro system based on all pumps or turbines
 
     def pumpHeadLoss(self):
         '''
@@ -113,19 +117,14 @@ class phs:
 
         '''
         
-        # Initialize the parameters
-        g = 9.81 # m/s^2
-        rho = 997 # kg/m^3
-        mu = 8.9*10**(-4) # Pa*s
-        
         # Define variables and calculate head loss
         if self.Q_turbine_penstock_t != 0:
             v_t = self.Q_turbine_penstock_t/(0.25*np.pi*(self.turbine_penstock_d**2))
-            Re_t = (rho*v_t*self.turbine_penstock_d)/mu
+            Re_t = (const.rho*v_t*self.turbine_penstock_d)/const.mu
             F_t = (1.8*np.log10(6.9/Re_t + ((self.turbine_abs_roughness/self.turbine_penstock_d)/3.7)**1.11))**(-2)
             K_pipe = (F_t*self.turbine_penstock_l)/self.turbine_penstock_d
             K_t = K_pipe + self.turbine_K_fittings
-            self.H_tl_t = K_t*(v_t**2)/(2*g)
+            self.H_tl_t = K_t*(v_t**2)/(2*const.gravity)
             
         else:
             self.H_tl_t = 0
@@ -150,7 +149,7 @@ class phs:
         self.pumpHeadLoss()
         
         # Calculate pump head
-        self.H_p_t = (self.SOC_current_test*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - self.SOC_current_test)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) + self.H_pl_t
+        self.H_p_t = (self.SOC_current*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - self.SOC_current)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) + self.H_pl_t
 
         return self.H_p_t
 
@@ -183,6 +182,8 @@ class phs:
         
         self.Q_pump_penstock_t = sum([self.pumps[g].Q_t for g in range(1,self.g_range+1)])
 
+        self.pumpEfficiency()
+
         return self.pumps[pump_index].Q_t
 
     def Q_turbine(self, turbine_index):
@@ -202,6 +203,7 @@ class phs:
         '''
 
         self.turbineHead()
+
         self.turbines[turbine_index].Q_previous = self.turbines[turbine_index].Q_t
         
         if (self.turbines[turbine_index].efficiency_t == 0) or (self.H_t_t < 0):
@@ -210,6 +212,8 @@ class phs:
         else:
             self.turbines[turbine_index].Q_t = (self.turbines[turbine_index].P_t*10**6)/(self.H_t_t*const.rho*const.gravity*self.turbines[turbine_index].efficiency_t)
             
+        self.turbineEfficiency()
+        
         return self.turbines[turbine_index].Q_t
 
     def turbineHead(self):
@@ -230,7 +234,7 @@ class phs:
         H_tl = self.turbineHeadLoss()
         
         # Calculate turbine head
-        self.H_t_t = (self.SOC_current_test*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - self.SOC_current_test)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) - H_tl
+        self.H_t_t = (self.SOC_current*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - self.SOC_current)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) - H_tl
         
         return self.H_t_t
 
@@ -278,3 +282,29 @@ class phs:
         else:
             self.turbines[turbine_index].efficiency_t = 0
         return self.turbines[turbine_index].efficiency_t
+    
+    def PHS_testToCurrent(self):
+        for g in range(0,self.g_range):
+            self.pumps[g].Q_previous = self.pumps[g].Q_t
+            self.pumps[g].P_previous = self.pumps[g].P_t
+
+        for h in range(0, self.h_range):
+            self.turbines[h].Q_previous = self.turbines[h].Q_t
+            self.turbines[h].P_previous = self.turbines[h].P_t
+
+        self.Q_pump_penstock_pre = self.Q_pump_penstock_t
+
+        self.Q_turbine_penstock_pre = self.Q_turbine_penstock_t
+
+    def PHS_idleInterval(self):
+        for g in range(0,self.g_range):
+            self.pumps[g].Q_previous = 0
+            self.pumps[g].P_previous = 0
+
+        for h in range(0, self.h_range):
+            self.turbines[h].Q_previous = 0
+            self.turbines[h].P_previous = 0
+
+        self.Q_pump_penstock_pre = 0
+
+        self.Q_turbine_penstock_pre = 0

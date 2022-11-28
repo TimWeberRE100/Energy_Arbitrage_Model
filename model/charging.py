@@ -1,5 +1,8 @@
+import numpy as np
+
 import memory
 import constants as const
+from battery import U_OCV_calc
 
 def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst):
     '''
@@ -7,10 +10,6 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
 
     Parameters
     ----------
-    current_state : dictionary
-        Dictionary containing the variables that define the current state of the system.
-    system_assumptions : dictionary
-        Dictionary of assumed parameters for the system.
     dispatchInstructions : list
         List of outputs from the dispatch model.
     day : integer
@@ -19,12 +18,19 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
         Dictionary of assumed parameters for the PHS turbines and pumps.
     year : integer
         Count of the year iterations on the current trading day.
+    storage_system_inst : storage_system
+        Object containing storage system parameters and current state.
+    market_inst : market
+        Object containing market parameters.
 
     Returns
     -------
-    list
-        List of outputs at the end of the trading day.
-
+    daily_memory : memory_daily
+        Object containing the stored values for each dispatch interval within the day.
+    daily_cycles : int
+        Count of the number of charge/discharge cycles within the day.
+    storage_system_inst : storage_system
+        Object containing the storage system parameters and current state.
     '''
     
     # Define system level parameters
@@ -42,7 +48,6 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
         if storage_system_inst.type == 'BESS':
             
             # Update the battery attributes
-            storage_system_inst.SOC_pre = daily_memory.SOC_day[-1]
             storage_system_inst.U_OCV_assign()
             storage_system_inst.R_cell_calc()
             storage_system_inst.eff_volt()
@@ -53,286 +58,254 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
             
             # Create the test SOC update
             if dispatchInstructions[t] < 0:
-                SOC_exp = storage_system_inst.SOC_pre - (1/storage_system_inst.energy_capacity)*storage_system_inst.efficiency_volt*storage_system_inst.efficiency_sys*dispatchInstructions[t]*delT
+                storage_system_inst.SOC_current = storage_system_inst.SOC_pre - (1/storage_system_inst.energy_capacity)*storage_system_inst.efficiency_volt*storage_system_inst.efficiency_sys*dispatchInstructions[t]*delT
                 daily_memory.behaviour.append(-1)
             elif dispatchInstructions[t] > 0:
-                SOC_exp = storage_system_inst.SOC_pre - (1/storage_system_inst.energy_capacity)*(1/(storage_system_inst.efficiency_volt*storage_system_inst.efficiency_sys))*dispatchInstructions[t]*delT
+                storage_system_inst.SOC_current = storage_system_inst.SOC_pre - (1/storage_system_inst.energy_capacity)*(1/(storage_system_inst.efficiency_volt*storage_system_inst.efficiency_sys))*dispatchInstructions[t]*delT
                 daily_memory.behaviour.append(1)
             else:
-                SOC_exp = storage_system_inst.SOC_pre
+                storage_system_inst.SOC_current = storage_system_inst.SOC_pre
                 daily_memory.behaviour.append(0)
         
         # Perform the pumped hydro charging operation
         elif storage_system_inst.type == 'PHS':
             # Initialise parameters
-            storage_system_inst.H_pl_t = 0
-            storage_system_inst.H_tl_t = 0
-            storage_system_inst.turbineHead()
-            storage_system_inst.pumpHead()
+            H_pl_initial = 0
+            H_tl_initial = 0
             
             # Charging behaviour
             if (sum(dispatchInstructions[t]) < 0):
-                Q_p_pre_newSum = Q_pump(0,efficiency_pump,head_pump,rho,gravity)
-                Q_t_pre_newSum = 0
-                H_pl = -1
-                Q_t_list = h_index_range*[0]
+                storage_system_inst.Q_pump_penstock_t = 0
+                storage_system_inst.Q_turbine_penstock_t = 0
+                storage_system_inst.H_pl_t = -1
+
+                for g in range(0,storage_system_inst.g_range):
+                    storage_system_inst.pumps[h].efficiency_t = 0.91
                 
                 # Search for steady-state pump variable values
-                while abs(H_pl - H_pl_initial) > 0.01*H_pl:
-                    Q_p_list = []
-                    H_pl_initial = H_pl
+                while abs(storage_system_inst.H_pl_t - H_pl_initial) > 0.01*storage_system_inst.H_pl_t:
+                    H_pl_initial = storage_system_inst.H_pl_t
                     # Calculate pump flow rates
-                    for g in range(0,g_index_range):   
-                        Q_p_g = Q_pump(-dispatchInstructions[t][g],efficiency_pump,head_pump,rho,gravity)
-                        efficiency_pump = pumpEfficiency(Q_p_g)
-                        Q_p_list.append(Q_p_g)
+                    for g in range(0,storage_system_inst.g_range):
+                        storage_system_inst.pumps[g].P_t = -dispatchInstructions[t][g]
+                        storage_system_inst.Q_pump(g)
                     # Send pump flows to pump penstock
-                    Q_p_pre_newSum = sum(Q_p_list)
-                    H_pl = pumpHeadLoss(system_assumptions,Q_p_pre_newSum)
-                    head_pump = pumpHead(SOC_t_pre,system_assumptions,H_pl)
+                    storage_system_inst.Q_pump_penstock_t = sum([storage_system_inst.pumps[g].Q_t for g in range (0,storage_system_inst.g_range)])
+                    storage_system_inst.pumpHead()
                 
                 # Calculate new SOC
-                SOC_exp = ((delT*3600)/volume_reservoir)*(Q_p_pre_newSum - Q_t_pre_newSum)+SOC_t_pre
+                storage_system_inst.SOC_current = ((delT*3600)/storage_system_inst.V_res_u)*(storage_system_inst.Q_pump_penstock_t - storage_system_inst.Q_turbine_penstock_t)+storage_system_inst.SOC_pre
                 
                 # Append variables to lists
-                behaviour.append(-1)
-                headLossPump.append(H_pl)
-                headPump.append(head_pump)
-                flowRatePump.append(Q_p_pre_newSum)
-                headLossTurbine.append(0)
-                headTurbine.append(0)
-                flowRateTurbine.append(0)
-                efficiencyTurbineDay.append(0)
+                daily_memory.update_phs(-1, storage_system_inst.H_pl_t, storage_system_inst.H_p_t, storage_system_inst.Q_pump_penstock_t,0,0,0,0)
                        
             elif (sum(dispatchInstructions[t]) > 1):                
-                Q_p_pre_newSum = 0
-                Q_t_pre_newSum = Q_turbine(0,efficiency_turbine,head_pump,rho,gravity)
-                H_tl = -1
-                Q_p_list = g_index_range*[0]
-                turb_eff_list = h_index_range*[efficiency_turbine]
+                storage_system_inst.Q_pump_penstock_t = 0
+                storage_system_inst.Q_turbine_penstock_t = 0
+                storage_system_inst.H_tl_t = -1
+
+                for h in range(0,storage_system_inst.h_range):
+                    storage_system_inst.turbine[h].efficiency_t = 0.91
                 
                 # Search for steady-state turbine variable values
-                while abs(H_tl - H_tl_initial) > 0.01*H_tl:
-                    Q_t_list = []
-                    
-                    H_tl_initial = H_tl
+                while abs(storage_system_inst.H_tl_t - H_tl_initial) > 0.01*storage_system_inst.H_tl_t:
+                    H_tl_initial = storage_system_inst.H_tl_t
                     # Calculate turbine flow rates
-                    for h in range(0,h_index_range):   
-                        Q_t_h = Q_turbine(dispatchInstructions[t][h],turb_eff_list[h],head_turb,rho,gravity)
-                        efficiency_turbine = turbineEfficiency(phs_assumptions,Q_t_h,h+1)
-                        Q_t_list.append(Q_t_h)
-                        turb_eff_list[h] = efficiency_turbine
+                    for h in range(0,storage_system_inst.h_range):  
+                        storage_system_inst.turbine[h].P_t = dispatchInstructions[t][h]
+                        storage_system_inst.Q_turbine(h)
                         
                     # Send turbine flows to turbine penstock  
-                    Q_t_pre_newSum = sum(Q_t_list)
-                    H_tl = turbineHeadLoss(system_assumptions,Q_t_pre_newSum)
-                    head_turb = turbineHead(SOC_t_pre,system_assumptions,H_tl)
-                    totalTurbEff = 0
+                    storage_system_inst.Q_turbine_penstock_t = sum([storage_system_inst.turbine[h].Q_t for h in range(0,storage_system_inst.h_range)])
+                    storage_system_inst.turbineHead()
+                    
+                    storage_system_inst.efficiency_total_t = 0
                     
                     # Calculate the overall turbine efficiency
-                    for a in range(0,len(Q_t_list)):
-                        
-                        effProp = (Q_t_list[a] / Q_t_pre_newSum) * turb_eff_list[a]
-                        totalTurbEff += effProp
+                    for h in range(0,storage_system_inst.h_range):
+                        effProp = (storage_system_inst.turbines[h].Q_t / storage_system_inst.Q_turbine_penstock_t)*storage_system_inst.turbines[h].efficiency_t
+                        storage_system_inst.efficiency_total_t += effProp
                 
                 # Update discharging variables for the dispatch interval
-                SOC_exp = ((delT*3600)/volume_reservoir)*(Q_p_pre_newSum - Q_t_pre_newSum)+SOC_t_pre
-                behaviour.append(1)
-                headLossTurbine.append(H_tl)
-                headTurbine.append(head_turb)
-                flowRateTurbine.append(Q_t_pre_newSum)
-                efficiencyTurbineDay.append(totalTurbEff)
-                headLossPump.append(0)
-                headPump.append(0)
-                flowRatePump.append(0)
+                storage_system_inst.SOC_current = ((delT*3600)/storage_system_inst.V_res_u)*(storage_system_inst.Q_pump_penstock_t - storage_system_inst.Q_turbine_penstock_t)+storage_system_inst.SOC_pre
                 
+                daily_memory.update_phs(1,0,0,0,storage_system_inst.H_tl_t, storage_system_inst.H_t_t, storage_system_inst.Q_turbine_penstock_t,storage_system_inst.efficiency_total_t,0,0,0)
+                                
             else:
                 # Update variables if system is idleing
-                Q_p_list = g_index_range*[0]
-                Q_t_list = h_index_range*[0]
-                SOC_exp = SOC_t_pre
-                behaviour.append(0) 
-                headLossTurbine.append(0)
-                headTurbine.append(0)
-                flowRateTurbine.append(0)
-                headLossPump.append(0)
-                headPump.append(0)
-                flowRatePump.append(0)
-                efficiencyTurbineDay.append(0)
+                for g in range(0,storage_system_inst.g_range):
+                    storage_system_inst.pumps[g].Q_t = 0
                 
-            # Calculate ramp times
-            V_transient_adjust_t = []
-            V_transient_adjust_p = []
-            RT_t = []
-            RT_p = []
-                             
-            if (sum(Q_t_list) == sum(Q_t_list_previous)):
+                for h in range(0,storage_system_inst.h_range):
+                    storage_system_inst.turbines[h].Q_t = 0
+
+                storage_system_inst.SOC_current = storage_system_inst.SOC_pre
+
+                daily_memory.update_phs(0,0,0,0,0,0,0,0)
+
+            # Perform transient adjustment based on ramp times
+            if (storage_system_inst.Q_turbine_penstock_t == storage_system_inst.Q_turbine_penstock_pre):
             
-                for g in range(0,g_index_range):
-                    Q_p_peak = float(phs_assumptions["g"+str(g+1)]["Q_peak [m3/s]"])
-                    if sum(Q_p_list) < sum(Q_p_list_previous):
-                        RT_p_g = np.abs(Q_p_list[g] - Q_p_list_previous[g])/Q_p_peak * rampTime_P_TNL
+                for g in range(0,storage_system_inst.g_range):
+                    if storage_system_inst.Q_pump_penstock_t < storage_system_inst.Q_pump_penstock_pre:
+                        storage_system_inst.pumps[g].RT_t = np.abs(storage_system_inst.pumps[g].Q_t - storage_system_inst.pumps[g].Q_previous) / storage_system_inst.pumps[g].Q_peak * storage_system_inst.rt_p_tnl
                     else:
-                        RT_p_g = np.abs(Q_p_list[g] - Q_p_list_previous[g])/Q_p_peak * rampTime_TNL_P
-                    RT_p.append(RT_p_g)
-                    V_transient_adjust_p_g = RT_p_g*(Q_p_list_previous[g] - Q_p_list[g])/2
-                    V_transient_adjust_p.append(V_transient_adjust_p_g)
+                        storage_system_inst.pumps[g].RT_t = np.abs(storage_system_inst.pumps[g].Q_t - storage_system_inst.pumps[g].Q_previous) / storage_system_inst.pumps[g].Q_peak * storage_system_inst.rt_tnl_p
+                    storage_system_inst.pumps[g].V_transient_adjust_t = storage_system_inst.pumps[g].RT_t*(storage_system_inst.pumps[g].Q_previous - storage_system_inst.pumps[g].Q_t)/2
+
+                for h in range(0, storage_system_inst.h_range):
+                    storage_system_inst.turbines[h].RT_t = 0
+                    storage_system_inst.turbines[h].V_transient_adjust_t = 0
                 
-                V_transient_adjust_t = h_index_range*[0]
-                RT_t = h_index_range*[0]
+            elif (storage_system_inst.Q_pump_penstock_t == storage_system_inst.Q_pump_penstock_pre):
                 
-            elif (sum(Q_p_list) == sum(Q_p_list_previous)):
+                for g in range(0,storage_system_inst.g_range):
+                    storage_system_inst.pumps[g].RT_t = 0
+                    storage_system_inst.pumps[g].V_transient_adjust_t = 0
                 
-                V_transient_adjust_p = g_index_range*[0]
-                RT_p = g_index_range*[0]
-                
-                for h in range(0,h_index_range):
-                    Q_t_peak = float(phs_assumptions["h"+str(h+1)]["Q_peak [m3/s]"])
-                    if sum(Q_t_list) < sum(Q_t_list_previous):
-                        RT_t_h = np.abs(Q_t_list_previous[h] - Q_t_list[h])/Q_t_peak * rampTime_T_TNL
+                for h in range(0,storage_system_inst.h_range):
+                    if storage_system_inst.Q_turbine_penstock_t < storage_system_inst.Q_turbine_penstock_pre:
+                        storage_system_inst.turbines[h].RT_t = np.abs(storage_system_inst.turbines[h].Q_previous - storage_system_inst.turbines[h].Q_t)/storage_system_inst.turbines[h].Q_peak * storage_system_inst.turbines[h].rt_t_tnl
                     else: 
-                        RT_t_h = np.abs(Q_t_list_previous[h] - Q_t_list[h])/Q_t_peak * rampTime_TNL_T
-                    RT_t.append(RT_t_h)
-                    V_transient_adjust_t_h = RT_t_h*(Q_t_list[h] - Q_t_list_previous[h])/2
-                    V_transient_adjust_t.append(V_transient_adjust_t_h)
+                        storage_system_inst.turbines[h].RT_t = np.abs(storage_system_inst.turbines[h].Q_previous - storage_system_inst.turbines[h].Q_t)/storage_system_inst.turbines[h].Q_peak * storage_system_inst.turbines[h].rt_tnl_t
+                    storage_system_inst.turbines[h].V_transient_adjust_t = storage_system_inst.turbines[h].RT_t*(storage_system_inst.turbines[h].Q_t - storage_system_inst.turbines[h].Q_previous)/2
                     
-            elif (sum(Q_p_list) < sum(Q_p_list_previous)) and (sum(Q_t_list) > sum(Q_t_list_previous)):
+            elif (storage_system_inst.Q_pump_penstock_t < storage_system_inst.Q_pump_penstock_pre) and (storage_system_inst.Q_turbine_penstock_t > storage_system_inst.Q_turbine_penstock_pre):
                 
-                for g in range(0,g_index_range):
-                    Q_p_peak = float(phs_assumptions["g"+str(g+1)]["Q_peak [m3/s]"])
-                    RT_p_g = np.abs(Q_p_list[g] - Q_p_list_previous[g])/Q_p_peak * rampTime_P_TNL
-                    RT_p.append(RT_p_g)
-                    V_transient_adjust_p_g = RT_p_g*(Q_p_list_previous[g] - Q_p_list[g])/2
-                    V_transient_adjust_p.append(V_transient_adjust_p_g)
+                for g in range(0,storage_system_inst.g_range):
+                    storage_system_inst.pumps[g].RT_t = np.abs(storage_system_inst.Q_pump_penstock_t - storage_system_inst.Q_pump_penstock_pre)/storage_system_inst.pumps[g].Q_peak * storage_system_inst.rt_p_tnl
+                    storage_system_inst.pumps[g].V_transient_adjust_t = storage_system_inst.pumps[g].RT_t*(storage_system_inst.Q_pump_penstock_pre - storage_system_inst.Q_pump_penstock_t)/2
                     
-                for h in range(0,h_index_range):
-                    Q_t_peak = float(phs_assumptions["h"+str(h+1)]["Q_peak [m3/s]"])
-                    RT_t_h = np.abs(Q_t_list_previous[h] - Q_t_list[h])/Q_t_peak * rampTime_TNL_T
-                    RT_t.append(RT_t_h)
-                    V_transient_adjust_t_h = (RT_t_h/2 + max(RT_p))*(Q_t_list[h] - Q_t_list_previous[h]) 
-                    V_transient_adjust_t.append(V_transient_adjust_t_h)
+                for h in range(0,storage_system_inst.h_range):
+                    storage_system_inst.turbines[h].RT_t = np.abs(storage_system_inst.Q_turbine_penstock_pre - storage_system_inst.Q_turbine_penstock_t)/storage_system_inst.turbines[h].Q_peak * storage_system_inst.rt_tnl_t
+                    storage_system_inst.turbines[h].V_transient_adjust_t = (storage_system_inst.turbines[h].RT_t/2 + max([storage_system_inst.pumps[g1].RT_t for g1 in range(0,storage_system_inst.g_range)]))*(storage_system_inst.Q_turbine_penstock_t - storage_system_inst.Q_turbine_penstock_pre)                     
                     
-            elif (sum(Q_p_list) > sum(Q_p_list_previous)) and (sum(Q_t_list) < sum(Q_t_list_previous)):
+            elif (storage_system_inst.Q_pump_penstock_t > storage_system_inst.Q_pump_penstock_pre) and (storage_system_inst.Q_turbine_penstock_t < storage_system_inst.Q_turbine_penstock_pre):
                 
-                for h in range(0,h_index_range):
-                    Q_t_peak = float(phs_assumptions["h"+str(h+1)]["Q_peak [m3/s]"])
-                    RT_t_h = np.abs(Q_t_list_previous[h] - Q_t_list[h])/Q_t_peak * rampTime_T_TNL
-                    RT_t.append(RT_t_h)
-                    V_transient_adjust_t_h = RT_t_h*(Q_t_list[h] - Q_t_list_previous[h])/2 
-                    V_transient_adjust_t.append(V_transient_adjust_t_h)
+                for h in range(0,storage_system_inst.h_range):
+                    storage_system_inst.turbines[h].RT_t = np.abs(storage_system_inst.Q_turbine_penstock_pre - storage_system_inst.Q_turbine_penstock_t)/storage_system_inst.turbines[h].Q_peak * storage_system_inst.rt_t_tnl
+                    storage_system_inst.turbines[h].V_transient_adjust_t = storage_system_inst.turbines[h].RT_t*(storage_system_inst.Q_turbine_penstock_t - storage_system_inst.Q_turbine_penstock_pre)/2
                 
-                for g in range(0,g_index_range):
-                    Q_p_peak = float(phs_assumptions["g"+str(g+1)]["Q_peak [m3/s]"])
-                    RT_p_g = np.abs(Q_p_list[g] - Q_p_list_previous[g])/Q_p_peak * rampTime_TNL_P
-                    RT_p.append(RT_p_g)
-                    V_transient_adjust_p_g = (RT_p_g/2 + max(RT_t))*(Q_p_list_previous[g] - Q_p_list[g])
-                    V_transient_adjust_p.append(V_transient_adjust_p_g)
+                for g in range(0,storage_system_inst.g_range):
+                    storage_system_inst.pumps[g].RT_t = np.abs(storage_system_inst.Q_pump_penstock_t - storage_system_inst.Q_pump_penstock_pre)/storage_system_inst.pumps[g].Q_peak * storage_system_inst.rt_tnl_p
+                    storage_system_inst.pumps[g].V_transient_adjust_t = (storage_system_inst.pumps[g].RT_t/2 + max([storage_system_inst.turbines[h1].RT_t for h1 in range(0,storage_system_inst.h_range)]))*(storage_system_inst.Q_pump_penstock_pre - storage_system_inst.Q_pump_penstock_t)
             
             else:
-                V_transient_adjust_t = h_index_range*[0]
-                V_transient_adjust_p = g_index_range*[0]
-                RT_t = h_index_range*[0]
-                RT_p = g_index_range*[0]
+                for g in range(0,storage_system_inst.g_range):
+                    storage_system_inst.pumps[g].RT_t = 0
+                    storage_system_inst.pumps[g].V_transient_adjust_t = 0
+                for h in range(0, storage_system_inst.h_range):
+                    storage_system_inst.turbines[h].RT_t = 0
+                    storage_system_inst.turbines[h].V_transient_adjust_t = 0
             
             # Update the SOC with the transient adjustments
-            SOC_exp += (1/volume_reservoir)*(sum(V_transient_adjust_p) + sum(V_transient_adjust_t))
+            storage_system_inst.SOC_current += (1/storage_system_inst.V_res_u)*(sum([storage_system_inst.pumps[g].V_transient_adjust_t for g in range(0,storage_system_inst.g_range)]) + sum([storage_system_inst.turbines[h].V_transient_adjust_t for h in range(0,storage_system_inst.h_range)]))
             
         # Determine the actual SOC update
-        if system_type == "PHS":
-            SOC_max = current_state["SOC_max"]
-            
-            if behaviour[t] == -1 and SOC_exp <= SOC_max:
-                cycle_tracker = 0
-                chargingCapacity.append(dispatchInstructions[t])
-                dischargingCapacity.append([0]*h_index_range)
-                chargedEnergy.append(-sum(dispatchInstructions[t])*delT + sum((RT_p[g]/2 + max(RT_t))/3600*(-current_state["P_p_list_previous"][g] + dispatchInstructions[t][g]) for g in range(0,g_index_range)))
-                dischargedEnergy.append(sum((RT_t[h]/2)/3600*(current_state["P_t_list_previous"][h]) for h in range(0,h_index_range)))
-                SOC_day.append(SOC_exp)
-                final_capacity = sum(dispatchInstructions[t])
-                current_state["Q_p_list_previous"] = Q_p_list
-                current_state["Q_t_list_previous"] = Q_t_list
-                current_state["P_p_list_previous"] = dispatchInstructions[t] 
-                current_state["P_t_list_previous"] = [0]*h_index_range
-            elif behaviour[t] == 1 and SOC_exp >= SOC_min:
-                if cycle_tracker == 0:
+        if storage_system_inst.type == "PHS":
+            if daily_memory.behaviour[t] == -1 and storage_system_inst.SOC_current <= storage_system_inst.SOC_max:
+                storage_system_inst.cycle_tracker = 0
+                
+                daily_memory.update_general(dispatchInstructions[t],\
+                    [0]*storage_system_inst.h_range,\
+                    -sum(dispatchInstructions[t])*delT + sum((storage_system_inst.pumps[g].RT_t/2 + max([storage_system_inst.turbines[h].RT_t for h in range(0,storage_system_inst.h_range)]))/3600*(-storage_system_inst.pumps[g].P_previous + dispatchInstructions[t][g]) for g in range(0,storage_system_inst.g_range)),\
+                    sum((storage_system_inst.turbines[h].RT_t/2)/3600*(storage_system_inst.turbines[h].P_previous) for h in range(0,storage_system_inst.h_range)),\
+                    storage_system_inst.SOC_current)
+
+                
+                storage_system_inst.P_current = sum(dispatchInstructions[t])
+
+                storage_system_inst.testToCurrent()
+
+            elif daily_memory.behaviour[t] == 1 and storage_system_inst.SOC_current >= storage_system_inst.SOC_min:
+                if storage_system_inst.cycle_tracker == 0:
                     daily_cycles += 1
-                    cycle_tracker = 1
-                chargingCapacity.append([0]*g_index_range)
-                dischargingCapacity.append(dispatchInstructions[t])
-                chargedEnergy.append(-sum((RT_p[g]/2)/3600*(current_state["P_p_list_previous"][g]) for g in range(0,g_index_range)))
-                dischargedEnergy.append(sum(dispatchInstructions[t])*delT + sum((RT_t[h]/2 + max(RT_p))/3600*(current_state["P_t_list_previous"][h] - dispatchInstructions[t][h]) for h in range(0,h_index_range)))
-                SOC_day.append(SOC_exp)
-                final_capacity = sum(dispatchInstructions[t])
-                current_state["Q_p_list_previous"] = Q_p_list
-                current_state["Q_t_list_previous"] = Q_t_list
-                current_state["P_p_list_previous"] = [0]*g_index_range
-                current_state["P_t_list_previous"] = dispatchInstructions[t] 
+                    storage_system_inst.cycle_tracker = 1
+
+                daily_memory.update_general([0]*storage_system_inst.g_range,\
+                    dispatchInstructions[t],\
+                    -sum((storage_system_inst.pumps[g].RT_t/2)/3600*(storage_system_inst.pumps[g].P_previous) for g in range(0,storage_system_inst.g_range)),\
+                    sum(dispatchInstructions[t])*delT + sum((storage_system_inst.turbines[h].RT_t/2 + max([storage_system_inst.pumps[g].RT_t for g in range(0,storage_system_inst.g_range)]))/3600*(storage_system_inst.turbines[h].P_previous - dispatchInstructions[t][h]) for h in range(0,storage_system_inst.h_range)),\
+                    storage_system_inst.SOC_current)
+                
+                storage_system_inst.P_current = sum(dispatchInstructions[t])
+
+                storage_system_inst.testToCurrent()
+
             else:
-                chargingCapacity.append([0]*g_index_range)
-                dischargingCapacity.append([0]*h_index_range)
-                chargedEnergy.append(0)
-                dischargedEnergy.append(0)
-                SOC_day.append(SOC_day[-1])
-                final_capacity = 0
-                current_state["Q_p_list_previous"] = [0]*g_index_range
-                current_state["Q_t_list_previous"] = [0]*h_index_range
-                current_state["P_p_list_previous"] = [0]*g_index_range
-                current_state["P_t_list_previous"] = [0]*h_index_range
+                daily_memory.update_general([0]*storage_system_inst.g_range,\
+                    [0]*storage_system_inst.h_range,\
+                    0,\
+                    0,\
+                    storage_system_inst.SOC_pre)
+                
+                storage_system_inst.P_current = 0
+
+                storage_system_inst.idleInterval()
         
         else:
-            SOC_max = current_state["SOC_max"]
-            
-            if behaviour[t] == -1 and SOC_exp <= SOC_max:
+            if daily_memory.behaviour[t] == -1 and storage_system_inst.SOC_current <= storage_system_inst.SOC_max:
                 cycle_tracker = 0
-                chargingCapacity.append(dispatchInstructions[t])
-                dischargingCapacity.append(0)
-                chargedEnergy.append(-dispatchInstructions[t]*delT)
-                dischargedEnergy.append(0)
-                SOC_day.append(SOC_exp)
-                final_capacity = dispatchInstructions[t]
-            elif behaviour[t] == 1 and SOC_exp >= SOC_min:
+
+                daily_memory.update_general(dispatchInstructions[t],\
+                    0,\
+                    -dispatchInstructions[t]*delT,\
+                    0,\
+                    storage_system_inst.SOC_current)
+
+                storage_system_inst.P_current = dispatchInstructions[t]
+
+                storage_system_inst.SOC_max_aged()
+
+                storage_system_inst.testToCurrent()
+
+            elif daily_memory.behaviour[t] == 1 and storage_system_inst.SOC_current >= storage_system_inst.SOC_min:
                 if cycle_tracker == 0:
                     daily_cycles += 1
                     cycle_tracker = 1
-                chargingCapacity.append(0)
-                dischargingCapacity.append(dispatchInstructions[t])                 
-                chargedEnergy.append(0)
-                dischargedEnergy.append(dispatchInstructions[t]*delT)
-                SOC_day.append(SOC_exp)
-                final_capacity = dispatchInstructions[t]
+
+                daily_memory.update_general(0,\
+                    dispatchInstructions[t],\
+                    0,\
+                    dispatchInstructions[t]*delT,\
+                    storage_system_inst.SOC_current)
+
+                storage_system_inst.P_current = dispatchInstructions[t]
+
+                storage_system_inst.SOC_max_aged()
+
+                storage_system_inst.testToCurrent()
+
             else:
-                chargingCapacity.append(0)
-                dischargingCapacity.append(0)
-                chargedEnergy.append(0)
-                dischargedEnergy.append(0)
-                SOC_day.append(SOC_day[-1])
-                final_capacity = 0
+                daily_memory.update_general(0,\
+                    0,\
+                    0,\
+                    0,\
+                    storage_system_inst.SOC_pre)
+
+                storage_system_inst.P_current = 0
+
+                storage_system_inst.SOC_current = storage_system_inst.SOC_pre
+                storage_system_inst.SOC_max_aged()
+
+                storage_system_inst.idleInterval()
         
-        # Capacity fading
-        if system_type == "BESS":
-            SOC = SOC_day[-1]
-            SOC_previous = SOC_day[-2]
-            U_ocv = N_series*U_OCV(SOC)
-            I_cell = 10**6*(chargingCapacity[-1]+dischargingCapacity[-1])/(74*6*8*33*U_ocv)
-            current_state = SOC_max_aged(I_cell,I_cyc,SOC,SOC_previous, float(system_assumptions["cell_energy_capacity [Ah]"]), Temp,delT,current_state)
-            current_state["SOC_sum"] += SOC
-            current_state["dispatch_intervals"] += 1
+        if storage_system_inst.type == "BESS":
+            # Capacity fading
+            storage_system_inst.SOC_sum += daily_memory.SOC_day[-1]
+            storage_system_inst.dispatch_intervals += 1
             
             # Efficiency fading
-            R_cell_t = R_cell(year,day,t,Temp,R_cell_initial,current_state)
-            current_state["R_cell"] = R_cell_t
-            
-            calendarLossDay.append(current_state["SOC_max_loss_cal"])
-            cycleLossDay.append(current_state["SOC_max_loss_cyc"])
-            R_cell_day.append(current_state["R_cell"])
-            SOC_max_day.append(current_state["SOC_max"])            
+            storage_system_inst.R_cell_calc(year,day,t)
+
+            daily_memory.update_bess(storage_system_inst.SOC_max_loss_cal,\
+                storage_system_inst.SOC_max_loss_cyc,\
+                storage_system_inst.R_cell,\
+                storage_system_inst.SOC_max)       
     
     # Remove the initial values from the list
-    SOC_day.pop(0)
-    chargingCapacity.pop(0)
-    dischargingCapacity.pop(0)
+    daily_memory.SOC_day.pop(0)
+    daily_memory.chargingCapacity.pop(0)
+    daily_memory.dischargingCapacity.pop(0)
     
-    # Store the cycle_tracker
-    current_state["cycle_tracker"] = cycle_tracker
-    
-    return [SOC_day,dischargingCapacity,chargingCapacity,final_capacity,dischargedEnergy,chargedEnergy,daily_cycles]
+    return daily_memory, daily_cycles, storage_system_inst

@@ -25,14 +25,14 @@ def U_OCV_calc(SOC):
 class battery:
     def __init__(self, assumptions):
         # Assumed parameters initialised
-        self.efficiency_sys = assumptions["efficiency_sys"] # System efficiency of the battery, including HVAC and other auxiliaries (0,1]
-        self.P_standby = assumptions["P_standby"] # Power consumption of idling system [MW]
-        self.temp = assumptions["Temp"] # Temperature of the battery [K]
-        self.eol = assumptions["eol"] # State of health at which point the Li-ion battery is assumed to reach end of life [0,1)
-        self.R_cell_initial = assumptions["R_cell_initial"] # Initial internal resistance of the cells at start of simulation [Ohms]
-        self.series_cells = assumptions["series_cells"] # Number of cells in series
-        self.parallel_cells = assumptions["parallel_cells"] # Number of cells in parallel
-        self.cell_e = assumptions["cell_energy_capacity [Ah]"] # Energy capacity of each cell [Ah]
+        self.efficiency_sys = float(assumptions["efficiency_sys"]) # System efficiency of the battery, including HVAC and other auxiliaries (0,1]
+        self.P_standby = float(assumptions["P_standby"]) # Power consumption of idling system [MW]
+        self.temp = int(assumptions["Temp"]) # Temperature of the battery [K]
+        self.eol = float(assumptions["eol"]) # State of health at which point the Li-ion battery is assumed to reach end of life [0,1)
+        self.R_cell_initial = float(assumptions["R_cell_initial"]) # Initial internal resistance of the cells at start of simulation [Ohms]
+        self.series_cells = int(assumptions["series_cells"]) # Number of cells in series
+        self.parallel_cells = int(assumptions["parallel_cells"]) # Number of cells in parallel
+        self.cell_e = float(assumptions["cell_energy_capacity [Ah]"]) # Energy capacity of each cell [Ah]
         self.U_cell_nom = U_OCV_calc(0.5) # Nominal open-circuit voltage of the cell [V]
         self.U_batt_nom = self.U_cell_nom * self.series_cells # Nominal open-circuit voltage of the battery [V]
         self.I_cyc = 0 # Current threshold for cycle aging [A]
@@ -46,11 +46,12 @@ class battery:
         self.calLossTime = 0 # Time spent in calendar loss dominated dispatch intervals [h]
         self.SOC_max_loss_cal = 0 # Current reduction in state of health due to calendar aging [0,1]
         self.SOC_max_loss_cyc = 0 # Current reduction in state of health due to cycle ageing [0,1]
-        self.SOC_sum = 0.5
+        self.SOC_sum = 0.5 # Cumulative sum of state of charge over battery lifetime for the calculation of aging
+        self.dispatch_intervals = 0 # Count of dispatch intervals over battery lifetime for the calculation of aging
         self.U_cell = 0 # Open-circuit voltage of the cell [V]
         self.R_cell = 0 # Internal resistance of the cell [Ohms]
         self.U_batt = 0 # Open-circuit voltage of the battery [V]
-        self.efficiency_volt = self.eff_volt() # Voltage efficiency of the battery (0,1]
+        self.efficiency_volt = 0 # Voltage efficiency of the battery (0,1]
         self.I_filt = 0 # Filtered current through the cells [A]
 
     def U_OCV_assign(self):
@@ -67,7 +68,7 @@ class battery:
         None
 
         '''
-        self.U_cell = U_OCV_calc(self.SOC_current_test)
+        self.U_cell = U_OCV_calc(self.SOC_current)
         self.U_batt = self.U_cell * self.series_cells
 
     def R_cell_calc(self, year_count, day, dispatch_interval):
@@ -120,7 +121,7 @@ class battery:
         '''
         
         # Calculate the radicand
-        sqrt_var = 0.25 - (abs(self.P_current)/(self.efficiency_sys*self.SOC_current_test*self.energy_capacity))*((self.U_batt_nom/self.U_batt)**2)*self.R_cell*(self.cell_e*self.U_cell_nom)/self.U_cell_nom
+        sqrt_var = 0.25 - (abs(self.P_current)/(self.efficiency_sys*self.SOC_current*self.energy_capacity))*((self.U_batt_nom/self.U_batt)**2)*self.R_cell*(self.cell_e*self.U_cell_nom)/self.U_cell_nom
         
         # Error handling for negative radicand
         if sqrt_var < 0:
@@ -154,6 +155,9 @@ class battery:
 
         # Update filtered current value
         self.I_filt = 10**6*self.P_current / (74*6*8*33*self.U_batt)
+
+        # Update the open-circuit voltages
+        self.U_OCV_assign()
         
         # Calculate cycle ageing based on empirical model and linear interpolation
         if self.I_filt < self.I_cyc:

@@ -38,15 +38,11 @@ class general_systems:
 
         # Current state parameters initialised
         self.dispatch_intervals = 0 # Number of dispatch intervals system has completed
-        self.cycle_tracker = 0 # Number of cycles system has completed
+        self.cycle_tracker = 0 # Tracks the current cycle state of the system [0 or 1]
         self.SOC_current = 0.5 # Current SOC of the system [0,1]
         self.P_current = 0 # Current power output by the system [MW]
         self.SOC_pre = 0.5 # Previous SOC of the system [0,1]
         self.P_pre = 0 # Previous power output by the system [MW]
-
-        # Test state parameters initialised
-        self.SOC_current_test = 0.5
-        self.P_current_test = 0
 
     def linearParameterDF(self, linearisation_df, parameterName):
         '''
@@ -67,3 +63,24 @@ class general_systems:
         '''
         parameterValue_df = linearisation_df.loc[(linearisation_df['Variable Name'] == parameterName) & (linearisation_df['System Type'] == self.type)]['Variable Value'].values   
         return parameterValue_df
+
+    def testToCurrent(self):
+        if self.type == "PHS":
+            self.PHS_testToCurrent()
+        elif self.type == "BESS":
+            self.BESS_testToCurrent()
+        else:
+            print("Unknown storage system type passed to testTCurrent()")
+        
+        self.SOC_pre = self.SOC_current
+        self.P_pre = self.P_current
+    
+    def idleInterval(self):
+        if self.type == "PHS":
+            self.PHS_idleInterval()
+        elif self.type == "BESS":
+            self.BESS_idleInterval()
+        else:
+            print("Unknown storage system type passed to idleInterval()")
+        
+        self.P_pre = 0

@@ -1,4 +1,4 @@
-def settlementModel(system_assumptions,energy,SP):
+def settlementModel(storage_system_inst,energy,SP):
     '''
     Calculate the trading amounts for settlement at the end of the trading day.
 
@@ -19,10 +19,6 @@ def settlementModel(system_assumptions,energy,SP):
     '''
     
     # Define parameters
-    mlf_load = float(system_assumptions["mlf_load"])
-    mlf_gen = float(system_assumptions["mlf_gen"])
-    dlf_load = float(system_assumptions["dlf_load"])
-    dlf_gen = float(system_assumptions["dlf_gen"])
     dischargedEnergy = energy[0]
     chargedEnergy = energy[1]
     TA_ch = []
@@ -32,7 +28,7 @@ def settlementModel(system_assumptions,energy,SP):
         for t in range(0,6):
             
             # Calculate the trade revenue for the dispatch interval
-            TA_s = (dlf_gen*mlf_gen*dischargedEnergy[t+6*s]-dlf_load*mlf_load*chargedEnergy[t+6*s])*SP[s]
+            TA_s = (storage_system_inst.dlf_gen*storage_system_inst.mlf_gen*dischargedEnergy[t+6*s]-storage_system_inst.dlf_load*storage_system_inst.mlf_load*chargedEnergy[t+6*s])*SP[s]
             if TA_s < 0:
                 TA_ch.append(TA_s)
                 TA_dis.append(0)

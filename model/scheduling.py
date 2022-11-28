@@ -156,7 +156,7 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
     model.mlf_gen = pyo.Param(initialize=storage_system_inst.mlf_gen)
     model.dlf_load = pyo.Param(initialize=storage_system_inst.dlf_load)
     model.dlf_gen = pyo.Param(initialize=storage_system_inst.dlf_gen)
-    model.delT = pyo.Param(initialize=(6*storage_system_inst.dispatch_interval_mins)/60)
+    model.delT = pyo.Param(initialize=(6*market_inst.dispatch_t)/60)
     model.SOCmax = pyo.Param(initialize=storage_system_inst.SOC_max)
     model.Pmin = pyo.Param(initialize=storage_system_inst.P_min)
     model.Pmax = pyo.Param(initialize=storage_system_inst.P_max)
