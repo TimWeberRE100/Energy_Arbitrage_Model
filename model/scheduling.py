@@ -300,11 +300,11 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
                 
         # Declare individual pump/turbine parameters      
         def initialize_QpPeak(model,g):
-            return {g:storage_system_inst.pumps[g].Q_peak for g in model.g}
+            return {g:storage_system_inst.pumps[g-1].Q_peak for g in model.g}
         model.QpPeak = pyo.Param(model.g,initialize=initialize_QpPeak,within=pyo.Any)
         
         def initialize_QtPeak(model,h):
-            return {h:storage_system_inst.turbines[h].Q_peak for h in model.h}
+            return {h:storage_system_inst.turbines[h-1].Q_peak for h in model.h}
         model.QtPeak = pyo.Param(model.h,initialize=initialize_QtPeak,within=pyo.Any)
         
         # Decalare other variables
@@ -656,7 +656,8 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
     instance = model.create_instance()
     
     # solverpath_exe='path/to/cbc'
-    solverpath_exe='/usr/bin/cbc'
+    #solverpath_exe='/usr/bin/cbc'
+    solverpath_exe='C:\\Users\\peckh\\anaconda3\\Library\\bin\\cbc'
     
     opt = pyo.SolverFactory('cbc',executable=solverpath_exe)
     opt.options['seconds'] = 1200
@@ -699,8 +700,8 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
                 
             for g in instance.g:
                 if instance.C[d,g].value > 0.1:
-                    unit_g_subBids.append(-storage_system_inst.pumps[g].P_rated)
-                    unit_g_capacities[str(g)].append(-storage_system_inst.pumps[g].P_rated)
+                    unit_g_subBids.append(-storage_system_inst.pumps[g-1].P_rated)
+                    unit_g_capacities[str(g)].append(-storage_system_inst.pumps[g-1].P_rated)
                 else:
                     unit_g_subBids.append(0)
                     unit_g_capacities[str(g)].append(0)

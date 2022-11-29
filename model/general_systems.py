@@ -77,3 +77,6 @@ class general_systems:
 
     def updateP_current(self, P_exp):
         self.P_current = P_exp
+
+    def updateCycleTracker(self, value):
+        self.cycle_tracker = value

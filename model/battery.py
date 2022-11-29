@@ -186,6 +186,8 @@ class battery:
             alpha = 370.3 #J/mol/A
 
             C_cyc_loss = B_cyc*np.exp((-Ea_cyc + alpha*I_avg)/(const.R*self.temp))*((self.Ah_throughput)**z_cyc) # % per cell
+            print([SOC, SOC_pre])
+            
             self.SOC_max_loss_cyc = C_cyc_loss/100
         
         # Calculate calendar ageing based on empirical model and linear interpolation

@@ -1,5 +1,6 @@
 import numpy as np
 import constants as const
+import debug
 
 class pump_turb:
     def __init__(self, unit_type, phs_assumptions, index):
@@ -13,9 +14,9 @@ class pump_turb:
         # Constant parameters initialised
         self.type = unit_type # Whether the object is a pump or a turbine
         self.id = index_pref + str(index)
-        self.P_rated = int(phs_assumptions[id]["P_rated [MW]"]) # Rated power of the pump/turbine [MW]
-        self.Q_peak = int(phs_assumptions[id]["Q_peak [m3/s]"]) # Flow rate of the pump/turbine at peak efficiency [m^3/s]
-        self.efficiency_peak = float(phs_assumptions[id]["Efficiency_peak"]) # Peak efficiency of the pump/turbine (0,1]
+        self.P_rated = int(phs_assumptions[self.id]["P_rated [MW]"]) # Rated power of the pump/turbine [MW]
+        self.Q_peak = int(phs_assumptions[self.id]["Q_peak [m3/s]"]) # Flow rate of the pump/turbine at peak efficiency [m^3/s]
+        self.efficiency_peak = float(phs_assumptions[self.id]["Efficiency_peak"]) # Peak efficiency of the pump/turbine (0,1]
 
         # Current state parameters initialised
         self.Q_previous = 0 # Flow rate from the previous interval [m^3/s]
@@ -34,9 +35,9 @@ class phs:
         # Reservoir parameters initialised        
         self.V_res_u = int(assumptions["V_res_upper"]) # Total volume of the upper reservoir [m^3]
         self.V_res_l = int(assumptions["V_res_lower"]) # Total volume of the lower reservoir [m^3]
-        self.H_r = int(assumptions["H_r"]) #
-        self.H_ur = int(assumptions["H_ur"]) #
-        self.H_lr = int(assumptions["H_lr"]) #
+        self.H_r = float(assumptions["H_r"]) #
+        self.H_ur = float(assumptions["H_ur"]) #
+        self.H_lr = float(assumptions["H_lr"]) #
 
         # Pump parameters initialised
         self.g_range = int(assumptions["g_index_range"]) # Number of pumps attached to the penstock
@@ -148,14 +149,17 @@ class phs:
 
         '''
 
-        self.pumpHeadLoss()
+        if self.Q_pump_penstock_t > 0:
+            self.pumpHeadLoss()
+        else:
+            self.H_pl_t = 0
         
         # Calculate pump head
         self.H_p_t = (SOC*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - SOC)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) + self.H_pl_t
 
         return self.H_p_t
 
-    def Q_pump(self, pump_index):
+    def Q_pump(self, pump_index, SOC):
         '''
         Flow rate for a pump unit.
 
@@ -171,7 +175,7 @@ class phs:
 
         '''
 
-        self.pumpHead()
+        self.pumpHead(SOC)
 
         self.pumps[pump_index].Q_previous = self.pumps[pump_index].Q_t
 
@@ -182,13 +186,13 @@ class phs:
         else:    
             self.pumps[pump_index].Q_t = (self.pumps[pump_index].P_t*self.pumps[pump_index].efficiency_t*10**6)/(self.H_p_t*const.rho*const.gravity)
         
-        self.Q_pump_penstock_t = sum([self.pumps[g].Q_t for g in range(1,self.g_range+1)])
+        self.Q_pump_penstock_t = sum([self.pumps[g].Q_t for g in range(0,self.g_range)])
 
-        self.pumpEfficiency()
+        self.pumpEfficiency(pump_index)
 
         return self.pumps[pump_index].Q_t
 
-    def Q_turbine(self, turbine_index):
+    def Q_turbine(self, turbine_index, SOC):
         '''
         Flow rate for a turbine unit
 
@@ -204,7 +208,7 @@ class phs:
 
         '''
 
-        self.turbineHead()
+        self.turbineHead(SOC)
 
         self.turbines[turbine_index].Q_previous = self.turbines[turbine_index].Q_t
         
@@ -214,7 +218,7 @@ class phs:
         else:
             self.turbines[turbine_index].Q_t = (self.turbines[turbine_index].P_t*10**6)/(self.H_t_t*const.rho*const.gravity*self.turbines[turbine_index].efficiency_t)
             
-        self.turbineEfficiency()
+        self.turbineEfficiency(turbine_index)
         
         return self.turbines[turbine_index].Q_t
 
@@ -233,10 +237,13 @@ class phs:
 
         '''
         
-        H_tl = self.turbineHeadLoss()
-        
+        if self.Q_turbine_penstock_t > 0:
+            self.turbineHeadLoss()
+        else:
+            self.H_tl_t = 0
+
         # Calculate turbine head
-        self.H_t_t = (SOC*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - SOC)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) - H_tl
+        self.H_t_t = (SOC*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - SOC)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) - self.H_tl_t
         
         return self.H_t_t
 
@@ -310,3 +317,136 @@ class phs:
         self.Q_pump_penstock_pre = 0
 
         self.Q_turbine_penstock_pre = 0
+
+    def steadyStateCalc(self, dispatch_instruction_powers, SOC_pre, delT):
+        # Initialise parameters
+        H_pl_initial = 0
+        H_tl_initial = 0
+        SOC_exp = SOC_pre
+            
+        # Charging behaviour
+        if (sum(dispatch_instruction_powers) < 0):
+            self.Q_pump_penstock_t = 0
+            self.Q_turbine_penstock_t = 0
+            self.H_pl_t = -1
+
+            for g in range(0,self.g_range):
+                self.pumps[g].efficiency_t = 0.91
+                
+            # Search for steady-state pump variable values
+            while abs(self.H_pl_t - H_pl_initial) > 0.01*self.H_pl_t:
+                H_pl_initial = self.H_pl_t
+                # Calculate pump flow rates
+                for g in range(0,self.g_range):
+                    self.pumps[g].P_t = -dispatch_instruction_powers[g]
+                    self.Q_pump(g, SOC_exp)
+                # Send pump flows to pump penstock
+                self.Q_pump_penstock_t = sum([self.pumps[g].Q_t for g in range (0,self.g_range)])
+                self.pumpHead(SOC_exp)
+                
+            # Calculate new SOC
+            SOC_exp = ((delT*3600)/self.V_res_u)*(self.Q_pump_penstock_t - self.Q_turbine_penstock_t)+SOC_pre
+                
+        elif (sum(dispatch_instruction_powers) > 1):                
+            self.Q_pump_penstock_t = 0
+            self.Q_turbine_penstock_t = 0
+            self.H_tl_t = -1
+
+            for h in range(0,self.h_range):
+                self.turbines[h].efficiency_t = 0.91
+                
+            # Search for steady-state turbine variable values
+            while abs(self.H_tl_t - H_tl_initial) > 0.01*self.H_tl_t:
+                H_tl_initial = self.H_tl_t
+                # Calculate turbine flow rates
+                for h in range(0,self.h_range):  
+                    self.turbines[h].P_t = dispatch_instruction_powers[h]
+                    self.Q_turbine(h, SOC_exp)
+                        
+                # Send turbine flows to turbine penstock  
+                self.Q_turbine_penstock_t = sum([self.turbines[h].Q_t for h in range(0,self.h_range)])
+                self.turbineHead(SOC_exp)
+                    
+                self.efficiency_total_t = 0
+                    
+                # Calculate the overall turbine efficiency
+                for h in range(0,self.h_range):
+                    effProp = (self.turbines[h].Q_t / self.Q_turbine_penstock_t)*self.turbines[h].efficiency_t
+                    self.efficiency_total_t += effProp
+                
+            # Update discharging variables for the dispatch interval
+            SOC_exp = ((delT*3600)/self.V_res_u)*(self.Q_pump_penstock_t - self.Q_turbine_penstock_t)+SOC_pre
+                                
+        else:
+            # Update variables if system is idleing
+            for g in range(0,self.g_range):
+                self.pumps[g].Q_t = 0
+                
+            for h in range(0,self.h_range):
+                self.turbines[h].Q_t = 0
+
+            SOC_exp = SOC_pre
+        
+        return SOC_exp
+    
+    def transientAdjust(self, SOC_exp):
+        if (self.Q_turbine_penstock_t == self.Q_turbine_penstock_pre):
+            
+            for g in range(0,self.g_range):
+                if self.Q_pump_penstock_t < self.Q_pump_penstock_pre:
+                    self.pumps[g].RT_t = np.abs(self.pumps[g].Q_t - self.pumps[g].Q_previous) / self.pumps[g].Q_peak * self.rt_p_tnl
+                else:
+                    self.pumps[g].RT_t = np.abs(self.pumps[g].Q_t - self.pumps[g].Q_previous) / self.pumps[g].Q_peak * self.rt_tnl_p
+                self.pumps[g].V_transient_adjust_t = self.pumps[g].RT_t*(self.pumps[g].Q_previous - self.pumps[g].Q_t)/2
+
+            for h in range(0, self.h_range):
+                self.turbines[h].RT_t = 0
+                self.turbines[h].V_transient_adjust_t = 0
+                
+        elif (self.Q_pump_penstock_t == self.Q_pump_penstock_pre):
+                
+            for g in range(0,self.g_range):
+                self.pumps[g].RT_t = 0
+                self.pumps[g].V_transient_adjust_t = 0
+                
+            for h in range(0,self.h_range):
+                if self.Q_turbine_penstock_t < self.Q_turbine_penstock_pre:
+                    self.turbines[h].RT_t = np.abs(self.turbines[h].Q_previous - self.turbines[h].Q_t)/self.turbines[h].Q_peak * self.rt_t_tnl
+                else: 
+                    self.turbines[h].RT_t = np.abs(self.turbines[h].Q_previous - self.turbines[h].Q_t)/self.turbines[h].Q_peak * self.rt_tnl_t
+                self.turbines[h].V_transient_adjust_t = self.turbines[h].RT_t*(self.turbines[h].Q_t - self.turbines[h].Q_previous)/2
+                    
+        elif (self.Q_pump_penstock_t < self.Q_pump_penstock_pre) and (self.Q_turbine_penstock_t > self.Q_turbine_penstock_pre):
+                
+            for g in range(0,self.g_range):
+                self.pumps[g].RT_t = np.abs(self.Q_pump_penstock_t - self.Q_pump_penstock_pre)/self.pumps[g].Q_peak * self.rt_p_tnl
+                self.pumps[g].V_transient_adjust_t = self.pumps[g].RT_t*(self.Q_pump_penstock_pre - self.Q_pump_penstock_t)/2
+                    
+            for h in range(0,self.h_range):
+                self.turbines[h].RT_t = np.abs(self.Q_turbine_penstock_pre - self.Q_turbine_penstock_t)/self.turbines[h].Q_peak * self.rt_tnl_t
+                self.turbines[h].V_transient_adjust_t = (self.turbines[h].RT_t/2 + max([self.pumps[g1].RT_t for g1 in range(0,self.g_range)]))*(self.Q_turbine_penstock_t - self.Q_turbine_penstock_pre)                     
+                    
+        elif (self.Q_pump_penstock_t > self.Q_pump_penstock_pre) and (self.Q_turbine_penstock_t < self.Q_turbine_penstock_pre):
+                
+            for h in range(0,self.h_range):
+                self.turbines[h].RT_t = np.abs(self.Q_turbine_penstock_pre - self.Q_turbine_penstock_t)/self.turbines[h].Q_peak * self.rt_t_tnl
+                self.turbines[h].V_transient_adjust_t = self.turbines[h].RT_t*(self.Q_turbine_penstock_t - self.Q_turbine_penstock_pre)/2
+                
+            for g in range(0,self.g_range):
+                self.pumps[g].RT_t = np.abs(self.Q_pump_penstock_t - self.Q_pump_penstock_pre)/self.pumps[g].Q_peak * self.rt_tnl_p
+                self.pumps[g].V_transient_adjust_t = (self.pumps[g].RT_t/2 + max([self.turbines[h1].RT_t for h1 in range(0,self.h_range)]))*(self.Q_pump_penstock_pre - self.Q_pump_penstock_t)
+            
+        else:
+            for g in range(0,self.g_range):
+                self.pumps[g].RT_t = 0
+                self.pumps[g].V_transient_adjust_t = 0
+            for h in range(0, self.h_range):
+                self.turbines[h].RT_t = 0
+                self.turbines[h].V_transient_adjust_t = 0
+            
+        # Update the SOC with the transient adjustments
+        SOC_exp += (1/self.V_res_u)*(sum([self.pumps[g].V_transient_adjust_t for g in range(0,self.g_range)]) + sum([self.turbines[h].V_transient_adjust_t for h in range(0,self.h_range)]))
+
+        return SOC_exp
+
+            

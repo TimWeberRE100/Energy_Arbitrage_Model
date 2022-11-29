@@ -96,7 +96,7 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
     # Determine settlement from actual charging behaviour 
     TA_day = settlement.settlementModel(storage_system_inst,dispatchedEnergy,SP_day)
         
-    return dispatchedEnergy, dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst
+    return dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst
 
 def main(ifilename):
     '''
@@ -193,9 +193,9 @@ def main(ifilename):
             
             annual_memory.TA_dis.append(sum(dailyOutputs[1][0]))
             annual_memory.TA_ch.append(-sum(dailyOutputs[1][1]))
-            annual_memory.SP.extend(dailyOutputs[3])
-            annual_memory.dailyCycles.append(dailyOutputs[4])
-            storage_system_inst = dailyOutputs[5]
+            annual_memory.SP.extend(dailyOutputs[2])
+            annual_memory.dailyCycles.append(dailyOutputs[3])
+            storage_system_inst = dailyOutputs[4]
                 
         # Determine end of year results for systems with no degradation, assuming same discharging each year
         simulation_memory.TA_dis.append(sum(annual_memory.TA_dis))
