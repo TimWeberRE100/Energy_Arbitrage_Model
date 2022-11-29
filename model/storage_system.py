@@ -11,3 +11,12 @@ class storage_system:
                 pass
 
         raise AttributeError
+
+    def testToCurrent(self):
+        for obj in self._storage_system__objects:
+            obj.testToCurrent()
+
+    def idleInterval(self):
+        for obj in self._storage_system__objects:
+            obj.idleInterval()
+        

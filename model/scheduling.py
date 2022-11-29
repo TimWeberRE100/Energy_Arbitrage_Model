@@ -1,6 +1,8 @@
 import pyomo.environ as pyo
 from pyomo.opt.results import SolverStatus
 import numpy as np
+
+import debug
 import battery
 import constants as const
 
@@ -23,12 +25,13 @@ def Pmax_ij_aged(SOC,Ubatt_SOC,storage_system_inst):
         Maximum power limit ensuring efficiency losses > 80%.
 
     '''
+
     numerator = ((storage_system_inst.efficiency_sys**2)/4) - (0.8 - 0.5*storage_system_inst.efficiency_sys)**2
     denominator = storage_system_inst.efficiency_sys*((storage_system_inst.U_batt_nom/Ubatt_SOC)**2)*storage_system_inst.R_cell*storage_system_inst.cell_e*storage_system_inst.U_cell_nom
     coefficient = SOC*storage_system_inst.energy_capacity*storage_system_inst.U_cell_nom
     
     Pmax_current = coefficient*(numerator/denominator)
-    
+
     return Pmax_current
 
 def Ploss_m_aged(power,storage_system_inst):
@@ -143,7 +146,7 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
         List of bid and offer capacities, bid and offer price bands, and scheduled behaviour.
 
     '''
-    
+
     # Create abstract model object
     model = pyo.AbstractModel()
         
@@ -653,7 +656,7 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
     instance = model.create_instance()
     
     # solverpath_exe='path/to/cbc'
-    solverpath_exe='Computer\\usr\\bin\\cbc'
+    solverpath_exe='/usr/bin/cbc'
     
     opt = pyo.SolverFactory('cbc',executable=solverpath_exe)
     opt.options['seconds'] = 1200

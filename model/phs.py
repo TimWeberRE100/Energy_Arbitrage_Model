@@ -29,6 +29,8 @@ class pump_turb:
 
 class phs:
     def __init__(self,assumptions, phs_assumptions):
+        self.obj_type = "phs"
+
         # Reservoir parameters initialised        
         self.V_res_u = int(assumptions["V_res_upper"]) # Total volume of the upper reservoir [m^3]
         self.V_res_l = int(assumptions["V_res_lower"]) # Total volume of the lower reservoir [m^3]
@@ -131,7 +133,7 @@ class phs:
 
         return self.H_tl_t
 
-    def pumpHead(self):
+    def pumpHead(self, SOC):
         '''
         Calculate the net head for the pumps.
 
@@ -149,7 +151,7 @@ class phs:
         self.pumpHeadLoss()
         
         # Calculate pump head
-        self.H_p_t = (self.SOC_current*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - self.SOC_current)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) + self.H_pl_t
+        self.H_p_t = (SOC*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - SOC)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) + self.H_pl_t
 
         return self.H_p_t
 
@@ -216,7 +218,7 @@ class phs:
         
         return self.turbines[turbine_index].Q_t
 
-    def turbineHead(self):
+    def turbineHead(self, SOC):
         '''
         Calculate net head for the turbines.
 
@@ -234,7 +236,7 @@ class phs:
         H_tl = self.turbineHeadLoss()
         
         # Calculate turbine head
-        self.H_t_t = (self.SOC_current*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - self.SOC_current)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) - H_tl
+        self.H_t_t = (SOC*(self.fsl_ur - self.mol_ur) + self.mol_ur - ((1 - SOC)*(self.V_res_u/self.V_res_l)*(self.fsl_lr - self.mol_lr)) - self.mol_lr) - H_tl
         
         return self.H_t_t
 
@@ -283,7 +285,7 @@ class phs:
             self.turbines[turbine_index].efficiency_t = 0
         return self.turbines[turbine_index].efficiency_t
     
-    def PHS_testToCurrent(self):
+    def testToCurrent(self):
         for g in range(0,self.g_range):
             self.pumps[g].Q_previous = self.pumps[g].Q_t
             self.pumps[g].P_previous = self.pumps[g].P_t
@@ -296,7 +298,7 @@ class phs:
 
         self.Q_turbine_penstock_pre = self.Q_turbine_penstock_t
 
-    def PHS_idleInterval(self):
+    def idleInterval(self):
         for g in range(0,self.g_range):
             self.pumps[g].Q_previous = 0
             self.pumps[g].P_previous = 0

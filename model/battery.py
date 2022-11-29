@@ -1,4 +1,5 @@
 import numpy as np
+import constants as const
 
 def U_OCV_calc(SOC):
         '''
@@ -24,6 +25,8 @@ def U_OCV_calc(SOC):
 
 class battery:
     def __init__(self, assumptions):
+        self.obj_type = "bess"
+
         # Assumed parameters initialised
         self.efficiency_sys = float(assumptions["efficiency_sys"]) # System efficiency of the battery, including HVAC and other auxiliaries (0,1]
         self.P_standby = float(assumptions["P_standby"]) # Power consumption of idling system [MW]
@@ -48,13 +51,13 @@ class battery:
         self.SOC_max_loss_cyc = 0 # Current reduction in state of health due to cycle ageing [0,1]
         self.SOC_sum = 0.5 # Cumulative sum of state of charge over battery lifetime for the calculation of aging
         self.dispatch_intervals = 0 # Count of dispatch intervals over battery lifetime for the calculation of aging
-        self.U_cell = 0 # Open-circuit voltage of the cell [V]
-        self.R_cell = 0 # Internal resistance of the cell [Ohms]
-        self.U_batt = 0 # Open-circuit voltage of the battery [V]
+        self.U_cell = self.U_cell_nom # Open-circuit voltage of the cell [V]
+        self.R_cell = self.R_cell_initial # Internal resistance of the cell [Ohms]
+        self.U_batt = self.U_batt_nom # Open-circuit voltage of the battery [V]
         self.efficiency_volt = 0 # Voltage efficiency of the battery (0,1]
         self.I_filt = 0 # Filtered current through the cells [A]
 
-    def U_OCV_assign(self):
+    def U_OCV_assign(self, SOC):
         '''
         Calculates the open-circuit voltage of the cells at a particular SOC. Updates the battery's attribute.
 
@@ -68,10 +71,10 @@ class battery:
         None
 
         '''
-        self.U_cell = U_OCV_calc(self.SOC_current)
+        self.U_cell = U_OCV_calc(SOC)
         self.U_batt = self.U_cell * self.series_cells
 
-    def R_cell_calc(self, year_count, day, dispatch_interval):
+    def R_cell_calc(self, year_count, day, dispatch_interval, SOC):
         '''
         Calculates the internal resistance of the cells based on an empirical model.
 
@@ -93,19 +96,22 @@ class battery:
         
         # Calculate the number of months that have been simulated
         ST = (365*(year_count)+day+dispatch_interval/288)/30
+
+        # Update the SOC_sum in accordance with the newly assigned SOC
+        self.SOC_sum += SOC
         
         # Calculate the average SOC during the simulation
         if year_count+day+dispatch_interval == 0:
             SOC_avg = 0.5
         else:
-            SOC_avg = (self.SOC_sum) / (self.dispatch_intervals) # dispatch_intervals is an attribute belonging to the general_systems class. It is part of the instance due to the storage_system constructor class 
+            SOC_avg = (self.SOC_sum) / (self.dispatch_intervals) 
             
         # Calculate the internal resistance
         self.R_cell = self.R_cell_initial + self.R_cell_initial*(6.9656*(10**(-8))*np.exp(0.05022*self.temp)) * (2.897*np.exp(0.006614*SOC_avg*100))*(ST**0.8)/100
 
         return self.R_cell
 
-    def eff_volt(self):
+    def eff_volt(self, SOC, power, energy_capacity):
         '''
         Calculate the voltage efficiency of the battery.
 
@@ -121,7 +127,7 @@ class battery:
         '''
         
         # Calculate the radicand
-        sqrt_var = 0.25 - (abs(self.P_current)/(self.efficiency_sys*self.SOC_current*self.energy_capacity))*((self.U_batt_nom/self.U_batt)**2)*self.R_cell*(self.cell_e*self.U_cell_nom)/self.U_cell_nom
+        sqrt_var = 0.25 - (abs(power)/(self.efficiency_sys*SOC*energy_capacity))*((self.U_batt_nom/self.U_batt)**2)*self.R_cell*(self.cell_e*self.U_cell_nom)/self.U_cell_nom
         
         # Error handling for negative radicand
         if sqrt_var < 0:
@@ -134,7 +140,7 @@ class battery:
         
         return self.efficiency_volt
 
-    def SOC_max_aged(self, delT): 
+    def SOC_max_aged(self, delT, SOC, SOC_pre, power): 
         '''
         Update the state of health of the battery based on cycle or calendar ageing.
         Assumes all cells age at the same rate.
@@ -150,21 +156,18 @@ class battery:
             State of health of the battery object.
 
         '''
-        # Define gas constant
-        R = 8.314 #[J/mol/K]
-
         # Update filtered current value
-        self.I_filt = 10**6*self.P_current / (74*6*8*33*self.U_batt)
+        self.I_filt = 10**6*power / (74*6*8*33*self.U_batt)
 
         # Update the open-circuit voltages
-        self.U_OCV_assign()
+        self.U_OCV_assign(SOC)
         
         # Calculate cycle ageing based on empirical model and linear interpolation
         if self.I_filt < self.I_cyc:
             self.cycLossCurrentSum += self.I_filt
             self.cycLossIntervals += 1
             I_avg = abs(self.cycLossCurrentSum/self.cycLossIntervals)
-            self.Ah_throughput += (self.SOC_current - self.SOC_pre)*self.cell_e
+            self.Ah_throughput += (SOC - SOC_pre)*self.cell_e
             
             if I_avg <= 1:
                 B_cyc = 3.16*10**3
@@ -181,15 +184,15 @@ class battery:
             z_cyc = 0.55
             Ea_cyc = 31700 #J/mol
             alpha = 370.3 #J/mol/A
-            
-            C_cyc_loss = B_cyc*np.exp((-Ea_cyc + alpha*I_avg)/(R*self.temp))*((self.Ah_throughput)**z_cyc) # % per cell
+
+            C_cyc_loss = B_cyc*np.exp((-Ea_cyc + alpha*I_avg)/(const.R*self.temp))*((self.Ah_throughput)**z_cyc) # % per cell
             self.SOC_max_loss_cyc = C_cyc_loss/100
         
         # Calculate calendar ageing based on empirical model and linear interpolation
         else:
             self.calLossTime += delT
             self.calLossIntervals += 1
-            self.calLossCurrentSum += self.SOC_current
+            self.calLossCurrentSum += SOC
             SOC_avg = self.calLossCurrentSum / self.calLossIntervals
             if SOC_avg <= 0.3:
                 B_cal = 7.34*10**5 # Ah/s^z_cal
@@ -206,10 +209,19 @@ class battery:
                 z_cal = 0.9 + (SOC_avg-0.65)*(0.683 - 0.9)/(0.35)
                 Ea_cal = 69804 + (SOC_avg-0.65)*(56937 - 69804)/(0.35) #J/mol
             
-            C_cal_loss = B_cal*np.exp(-Ea_cal/(R*self.temp))*((self.calLossTime*3600)**z_cal) # % per cell
+            C_cal_loss = B_cal*np.exp(-Ea_cal/(const.R*self.temp))*((self.calLossTime*3600)**z_cal) # % per cell
             self.SOC_max_loss_cal = C_cal_loss/100
         
         # Update the state of health of the system
         self.SOC_max = 1 - self.SOC_max_loss_cal - self.SOC_max_loss_cyc
 
         return self.SOC_max
+    
+    def incrementDispatchInterval(self):
+        self.dispatch_intervals += 1
+
+    def testToCurrent(self):
+        pass
+
+    def idleInterval(self):
+        pass

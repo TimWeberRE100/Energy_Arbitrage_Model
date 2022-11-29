@@ -3,6 +3,7 @@ import numpy as np
 import memory
 import constants as const
 from battery import U_OCV_calc
+import debug
 
 def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst):
     '''
@@ -48,9 +49,9 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
         if storage_system_inst.type == 'BESS':
             
             # Update the battery attributes
-            storage_system_inst.U_OCV_assign()
-            storage_system_inst.R_cell_calc()
-            storage_system_inst.eff_volt()
+            storage_system_inst.incrementDispatchInterval()
+            storage_system_inst.U_OCV_assign(storage_system_inst.SOC_current)
+            storage_system_inst.eff_volt(storage_system_inst.SOC_current, storage_system_inst.P_current, storage_system_inst.energy_capacity)
 
             # Update the daily memory            
             daily_memory.U_batt_day.append(storage_system_inst.U_batt)
@@ -58,15 +59,15 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
             
             # Create the test SOC update
             if dispatchInstructions[t] < 0:
-                storage_system_inst.SOC_current = storage_system_inst.SOC_pre - (1/storage_system_inst.energy_capacity)*storage_system_inst.efficiency_volt*storage_system_inst.efficiency_sys*dispatchInstructions[t]*delT
+                SOC_exp = storage_system_inst.SOC_pre - (1/storage_system_inst.energy_capacity)*storage_system_inst.efficiency_volt*storage_system_inst.efficiency_sys*dispatchInstructions[t]*delT
                 daily_memory.behaviour.append(-1)
             elif dispatchInstructions[t] > 0:
-                storage_system_inst.SOC_current = storage_system_inst.SOC_pre - (1/storage_system_inst.energy_capacity)*(1/(storage_system_inst.efficiency_volt*storage_system_inst.efficiency_sys))*dispatchInstructions[t]*delT
+                SOC_exp = storage_system_inst.SOC_pre - (1/storage_system_inst.energy_capacity)*(1/(storage_system_inst.efficiency_volt*storage_system_inst.efficiency_sys))*dispatchInstructions[t]*delT
                 daily_memory.behaviour.append(1)
             else:
-                storage_system_inst.SOC_current = storage_system_inst.SOC_pre
+                SOC_exp = storage_system_inst.SOC_pre
                 daily_memory.behaviour.append(0)
-        
+
         # Perform the pumped hydro charging operation
         elif storage_system_inst.type == 'PHS':
             # Initialise parameters
@@ -94,7 +95,7 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
                     storage_system_inst.pumpHead()
                 
                 # Calculate new SOC
-                storage_system_inst.SOC_current = ((delT*3600)/storage_system_inst.V_res_u)*(storage_system_inst.Q_pump_penstock_t - storage_system_inst.Q_turbine_penstock_t)+storage_system_inst.SOC_pre
+                SOC_exp = ((delT*3600)/storage_system_inst.V_res_u)*(storage_system_inst.Q_pump_penstock_t - storage_system_inst.Q_turbine_penstock_t)+storage_system_inst.SOC_pre
                 
                 # Append variables to lists
                 daily_memory.update_phs(-1, storage_system_inst.H_pl_t, storage_system_inst.H_p_t, storage_system_inst.Q_pump_penstock_t,0,0,0,0)
@@ -127,7 +128,7 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
                         storage_system_inst.efficiency_total_t += effProp
                 
                 # Update discharging variables for the dispatch interval
-                storage_system_inst.SOC_current = ((delT*3600)/storage_system_inst.V_res_u)*(storage_system_inst.Q_pump_penstock_t - storage_system_inst.Q_turbine_penstock_t)+storage_system_inst.SOC_pre
+                SOC_exp = ((delT*3600)/storage_system_inst.V_res_u)*(storage_system_inst.Q_pump_penstock_t - storage_system_inst.Q_turbine_penstock_t)+storage_system_inst.SOC_pre
                 
                 daily_memory.update_phs(1,0,0,0,storage_system_inst.H_tl_t, storage_system_inst.H_t_t, storage_system_inst.Q_turbine_penstock_t,storage_system_inst.efficiency_total_t,0,0,0)
                                 
@@ -139,7 +140,7 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
                 for h in range(0,storage_system_inst.h_range):
                     storage_system_inst.turbines[h].Q_t = 0
 
-                storage_system_inst.SOC_current = storage_system_inst.SOC_pre
+                SOC_exp = storage_system_inst.SOC_pre
 
                 daily_memory.update_phs(0,0,0,0,0,0,0,0)
 
@@ -199,8 +200,10 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
                     storage_system_inst.turbines[h].V_transient_adjust_t = 0
             
             # Update the SOC with the transient adjustments
-            storage_system_inst.SOC_current += (1/storage_system_inst.V_res_u)*(sum([storage_system_inst.pumps[g].V_transient_adjust_t for g in range(0,storage_system_inst.g_range)]) + sum([storage_system_inst.turbines[h].V_transient_adjust_t for h in range(0,storage_system_inst.h_range)]))
+            SOC_exp += (1/storage_system_inst.V_res_u)*(sum([storage_system_inst.pumps[g].V_transient_adjust_t for g in range(0,storage_system_inst.g_range)]) + sum([storage_system_inst.turbines[h].V_transient_adjust_t for h in range(0,storage_system_inst.h_range)]))
             
+        storage_system_inst.updateSOC_current(SOC_exp)
+        
         # Determine the actual SOC update
         if storage_system_inst.type == "PHS":
             if daily_memory.behaviour[t] == -1 and storage_system_inst.SOC_current <= storage_system_inst.SOC_max:
@@ -213,7 +216,7 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
                     storage_system_inst.SOC_current)
 
                 
-                storage_system_inst.P_current = sum(dispatchInstructions[t])
+                storage_system_inst.updateP_current(sum(dispatchInstructions[t]))
 
                 storage_system_inst.testToCurrent()
 
@@ -228,7 +231,7 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
                     sum(dispatchInstructions[t])*delT + sum((storage_system_inst.turbines[h].RT_t/2 + max([storage_system_inst.pumps[g].RT_t for g in range(0,storage_system_inst.g_range)]))/3600*(storage_system_inst.turbines[h].P_previous - dispatchInstructions[t][h]) for h in range(0,storage_system_inst.h_range)),\
                     storage_system_inst.SOC_current)
                 
-                storage_system_inst.P_current = sum(dispatchInstructions[t])
+                storage_system_inst.updateP_current(sum(dispatchInstructions[t]))
 
                 storage_system_inst.testToCurrent()
 
@@ -239,7 +242,7 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
                     0,\
                     storage_system_inst.SOC_pre)
                 
-                storage_system_inst.P_current = 0
+                storage_system_inst.updateP_current(0)
 
                 storage_system_inst.idleInterval()
         
@@ -253,9 +256,9 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
                     0,\
                     storage_system_inst.SOC_current)
 
-                storage_system_inst.P_current = dispatchInstructions[t]
+                storage_system_inst.updateP_current(dispatchInstructions[t])
 
-                storage_system_inst.SOC_max_aged()
+                storage_system_inst.SOC_max_aged(delT, storage_system_inst.SOC_current, storage_system_inst.SOC_pre, storage_system_inst.P_current)
 
                 storage_system_inst.testToCurrent()
 
@@ -270,9 +273,9 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
                     dispatchInstructions[t]*delT,\
                     storage_system_inst.SOC_current)
 
-                storage_system_inst.P_current = dispatchInstructions[t]
+                storage_system_inst.updateP_current(dispatchInstructions[t])
 
-                storage_system_inst.SOC_max_aged()
+                storage_system_inst.SOC_max_aged(delT, storage_system_inst.SOC_current, storage_system_inst.SOC_pre, storage_system_inst.P_current)
 
                 storage_system_inst.testToCurrent()
 
@@ -283,20 +286,16 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
                     0,\
                     storage_system_inst.SOC_pre)
 
-                storage_system_inst.P_current = 0
+                storage_system_inst.updateP_current(0)
 
                 storage_system_inst.SOC_current = storage_system_inst.SOC_pre
-                storage_system_inst.SOC_max_aged()
+                storage_system_inst.SOC_max_aged(delT, storage_system_inst.SOC_current, storage_system_inst.SOC_pre, storage_system_inst.P_current)
 
                 storage_system_inst.idleInterval()
         
         if storage_system_inst.type == "BESS":
-            # Capacity fading
-            storage_system_inst.SOC_sum += daily_memory.SOC_day[-1]
-            storage_system_inst.dispatch_intervals += 1
-            
             # Efficiency fading
-            storage_system_inst.R_cell_calc(year,day,t)
+            storage_system_inst.R_cell_calc(year,day,t, storage_system_inst.SOC_pre)
 
             daily_memory.update_bess(storage_system_inst.SOC_max_loss_cal,\
                 storage_system_inst.SOC_max_loss_cyc,\

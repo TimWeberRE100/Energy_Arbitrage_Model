@@ -1,6 +1,7 @@
 class general_systems:
     def __init__(self, assumptions, linear_assumptions):
         # Technical parameters initialised
+        self.obj_type = "general"
         self.type = assumptions["system_type"] # Type of storage system (e.g. PHS, BESS)
         self.energy_capacity = int(assumptions["energy_capacity"]) # Nameplate energy capacity of the system [MWh]
         self.power_capacity = int(assumptions["power_capacity"]) # Nameplate power capacity of the system [MW]
@@ -37,12 +38,12 @@ class general_systems:
         self.scLoss = self.linearParameterDF(linear_assumptions, "scLoss")
 
         # Current state parameters initialised
-        self.dispatch_intervals = 0 # Number of dispatch intervals system has completed
         self.cycle_tracker = 0 # Tracks the current cycle state of the system [0 or 1]
         self.SOC_current = 0.5 # Current SOC of the system [0,1]
         self.P_current = 0 # Current power output by the system [MW]
         self.SOC_pre = 0.5 # Previous SOC of the system [0,1]
         self.P_pre = 0 # Previous power output by the system [MW]
+        self.behaviour = 0 # Current charging behaviour of the system: 0 is idle, -1 is discharging, 1 is charging
 
     def linearParameterDF(self, linearisation_df, parameterName):
         '''
@@ -64,23 +65,15 @@ class general_systems:
         parameterValue_df = linearisation_df.loc[(linearisation_df['Variable Name'] == parameterName) & (linearisation_df['System Type'] == self.type)]['Variable Value'].values   
         return parameterValue_df
 
-    def testToCurrent(self):
-        if self.type == "PHS":
-            self.PHS_testToCurrent()
-        elif self.type == "BESS":
-            self.BESS_testToCurrent()
-        else:
-            print("Unknown storage system type passed to testTCurrent()")
-        
+    def testToCurrent(self):        
         self.SOC_pre = self.SOC_current
         self.P_pre = self.P_current
     
     def idleInterval(self):
-        if self.type == "PHS":
-            self.PHS_idleInterval()
-        elif self.type == "BESS":
-            self.BESS_idleInterval()
-        else:
-            print("Unknown storage system type passed to idleInterval()")
-        
         self.P_pre = 0
+
+    def updateSOC_current(self, SOC_exp):
+        self.SOC_current = SOC_exp
+
+    def updateP_current(self, P_exp):
+        self.P_current = P_exp

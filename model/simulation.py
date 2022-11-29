@@ -19,6 +19,7 @@ import dispatch
 import charging
 import settlement
 import lcos
+import debug
 
 # Import results modules
 import volatility
@@ -83,10 +84,10 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
     dispatch_bidsOffers = scheduling.schedulingModel(imperfectSP_day,day, offer_PB, bid_PB, forecasting_horizon, storage_system_inst, participant_inst, market_inst)      
     
     # Run the bids and offers through the central dispatch model
-    dispatchInstructions = dispatch.dispatchModel(dispatch_bidsOffers,DP_day,SP_day,storage_system_inst)
+    dispatchInstructions = dispatch.dispatchModel(dispatch_bidsOffers,DP_day,storage_system_inst)
     
     # Send the dispatch instructions to the charging model
-    chargingResults = charging.chargingModel(dispatchInstructions[0],day,year_count, storage_system_inst)
+    chargingResults = charging.chargingModel(dispatchInstructions[0],day,year_count, storage_system_inst, market_inst)
     dispatchedCapacity = [chargingResults[0].dischargingCapacity,chargingResults[0].chargingCapacity]
     dispatchedEnergy = [chargingResults[0].dischargedEnergy,chargingResults[0].chargedEnergy]
     daily_cycles = chargingResults[1]
@@ -95,7 +96,7 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
     # Determine settlement from actual charging behaviour 
     TA_day = settlement.settlementModel(storage_system_inst,dispatchedEnergy,SP_day)
         
-    return dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst
+    return dispatchedEnergy, dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst
 
 def main(ifilename):
     '''
