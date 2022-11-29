@@ -1,3 +1,5 @@
+import numpy as np
+
 def volatility(price_list):
     """
     Calculates the volatility of a list of energy prices.

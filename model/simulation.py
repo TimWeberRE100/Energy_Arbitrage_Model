@@ -218,7 +218,7 @@ def main(ifilename):
         EOL_results.to_csv(results_filename)
             
         if system_assumptions["system_type"] != "BESS":
-            LCOS = lcos.EOL_LCOS(annual_memory.DischargedEnergy,annual_memory.ChargedEnergy,annual_memory.TA_dis,annual_memory.TA_ch, storage_system_inst, year)
+            LCOS = lcos.EOL_LCOS(annual_memory.DischargedEnergy,annual_memory.TA_dis,annual_memory.TA_ch, storage_system_inst, year)
             RADP = LCOS[0]
             AADP = LCOS[1]
             price_vol = volatility.volatility(annual_memory.SP)
@@ -228,7 +228,7 @@ def main(ifilename):
         
     # Determine EOL resultsfor BESS
     if system_assumptions["system_type"] == "BESS":
-        LCOS = lcos.EOL_LCOS_Deg(simulation_memory.DischargedEnergy,simulation_memory.ChargedEnergy,simulation_memory.TA_dis,simulation_memory.TA_ch,storage_system_inst,year)
+        LCOS = lcos.EOL_LCOS_Deg(simulation_memory.DischargedEnergy,simulation_memory.TA_dis,simulation_memory.TA_ch,year,storage_system_inst)
         RADP = LCOS[0]
         AADP = LCOS[1]
         price_vol = volatility.volatility(annual_memory.SP)
