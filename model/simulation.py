@@ -19,10 +19,11 @@ import dispatch
 import charging
 import settlement
 import lcos
-import debug
 
 # Import results modules
 import volatility
+import display
+import debug
 
 def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,forecasting_horizon,storage_system_inst, participant_inst, market_inst):
     
@@ -98,7 +99,7 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
         
     return dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst
 
-def main(ifilename):
+def main(ifilename, display_arg):
     '''
     Main function runs the arbitrage simulation over the system lifetime.
 
@@ -252,4 +253,4 @@ if __name__ == '__main__':
         results = executor.map(main, result_filenames)
     '''
     
-    main("test")
+    main("test", 1)
