@@ -1,11 +1,8 @@
-import numpy as np
-
 import memory
-import constants as const
-from battery import U_OCV_calc
 import debug
+import display
 
-def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst):
+def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst, dp_list):
     '''
     Perform the charging/discharging according to the dispatch instructions for the trading day.
 
@@ -23,6 +20,8 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
         Object containing storage system parameters and current state.
     market_inst : market
         Object containing market parameters.
+    dp_list : list
+        List of dispatch prices for each dispatch interval in the trading day.
 
     Returns
     -------
@@ -42,6 +41,7 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
     
     # Define memory for the day
     daily_memory = memory.memory_daily(storage_system_inst)
+    memory.dispatch_prices = dp_list
     
     # Perform charging/discharging operation for each dispatch interval 
     for t in range(0,len(dispatchInstructions)):
@@ -191,5 +191,8 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
     daily_memory.SOC_day.pop(0)
     daily_memory.chargingCapacity.pop(0)
     daily_memory.dischargingCapacity.pop(0)
+
+    if day == display.test_day and display.display_arg:
+        display.chargingOutputsDay(storage_system_inst, daily_memory)
     
     return daily_memory, daily_cycles, storage_system_inst

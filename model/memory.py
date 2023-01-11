@@ -39,6 +39,7 @@ class memory_daily:
         self.cycleLossDay = []
         self.R_cell_day = []
         self.SOC_max_day = []
+        self.dispatch_prices = []
     
     def update_phs(self, behaviour, headLossPump, headPump, flowRatePump, headLossTurbine, headTurbine, flowRateTurbine, efficiencyTurbineDay):
         self.behaviour.append(behaviour)

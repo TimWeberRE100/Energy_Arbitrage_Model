@@ -88,7 +88,7 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
     dispatchInstructions = dispatch.dispatchModel(dispatch_bidsOffers,DP_day,storage_system_inst)
     
     # Send the dispatch instructions to the charging model
-    chargingResults = charging.chargingModel(dispatchInstructions[0],day,year_count, storage_system_inst, market_inst)
+    chargingResults = charging.chargingModel(dispatchInstructions[0],day,year_count, storage_system_inst, market_inst, DP_day)
     dispatchedCapacity = [chargingResults[0].dischargingCapacity,chargingResults[0].chargingCapacity]
     dispatchedEnergy = [chargingResults[0].dischargedEnergy,chargingResults[0].chargedEnergy]
     daily_cycles = chargingResults[1]
@@ -99,7 +99,7 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
         
     return dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst
 
-def main(ifilename, display_arg):
+def main(ifilename):
     '''
     Main function runs the arbitrage simulation over the system lifetime.
 
@@ -175,12 +175,13 @@ def main(ifilename, display_arg):
         if year % 4 == 0:
             total_days = 366
         else:
-                total_days = 365
+            total_days = 365
             
         # Define cumulative days since 1 January 2010 04:30 until 1 January YEAR 04:30
         total_days_cumulative = (year-2010)*365+(year-2010+1)//4
             
-        for day in range(0,total_days):
+        #for day in range(0,total_days):
+        for day in range(0,15):
             print(ifilename, year, iteration, day)
             
             dailyOutputs = dailySimulation(SP_List,DP_List,day,year,total_days_cumulative,iteration,imperfectSP_List,forecasting_horizon,storage_system_inst, participant_inst, market_inst)
@@ -198,6 +199,9 @@ def main(ifilename, display_arg):
             annual_memory.dailyCycles.append(dailyOutputs[3])
             storage_system_inst = dailyOutputs[4]
                 
+            if day == display.test_day and display.display_arg:
+                display.chargingOutputsLifetime(storage_system_inst, annual_memory)
+        
         # Determine end of year results for systems with no degradation, assuming same discharging each year
         simulation_memory.TA_dis.append(sum(annual_memory.TA_dis))
         simulation_memory.TA_ch.append(sum(annual_memory.TA_ch))
@@ -214,7 +218,7 @@ def main(ifilename, display_arg):
 
             
         simulation_memory.data.append([region,year,iteration+1,simulation_memory.TA_dis[-1],simulation_memory.TA_ch[-1],simulation_memory.DischargedEnergy[-1],simulation_memory.ChargedEnergy[-1],simulation_memory.averageCycleTime[-1],simulation_memory.capacityFactor[-1],simulation_memory.finalSOCmax[-1],simulation_memory.finalRcell[-1],"NA","NA","NA",forecasting_horizon,storage_system_inst.type,storage_system_inst.lifetime])
-            
+
         EOL_results = pd.DataFrame(data = simulation_memory.data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
         EOL_results.to_csv(results_filename)
             
@@ -236,6 +240,9 @@ def main(ifilename, display_arg):
         simulation_memory.data.append([region,year,"EOL",sum(simulation_memory.TA_dis),sum(simulation_memory.TA_ch),sum(simulation_memory.DischargedEnergy),sum(simulation_memory.ChargedEnergy),np.average(simulation_memory.averageCycleTime),sum(simulation_memory.DischargedEnergy) / (storage_system_inst.power_capacity * storage_system_inst.lifetime * total_days * 24),simulation_memory.finalSOCmax[-1],simulation_memory.finalRcell[-1],RADP,AADP,price_vol,forecasting_horizon,storage_system_inst.type,storage_system_inst.lifetime])
         EOL_results = pd.DataFrame(data = simulation_memory.data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
         EOL_results.to_csv(results_filename) 
+    
+    if display.display_arg:
+        display.chargingOutputsLifetime(storage_system_inst, simulation_memory)
 
 if __name__ == '__main__':
     '''
@@ -253,4 +260,4 @@ if __name__ == '__main__':
         results = executor.map(main, result_filenames)
     '''
     
-    main("test", 1)
+    main("test")

@@ -2,9 +2,11 @@ import pyomo.environ as pyo
 from pyomo.opt.results import SolverStatus
 import numpy as np
 
-import debug
 import battery
 import constants as const
+
+import debug
+import display
 
 def Pmax_ij_aged(SOC,Ubatt_SOC,storage_system_inst):
     '''
@@ -656,8 +658,8 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
     instance = model.create_instance()
     
     # solverpath_exe='path/to/cbc'
-    #solverpath_exe='/usr/bin/cbc'
-    solverpath_exe='C:\\Users\\peckh\\anaconda3\\Library\\bin\\cbc'
+    solverpath_exe='/usr/bin/cbc'
+    #solverpath_exe='C:\\Users\\peckh\\anaconda3\\Library\\bin\\cbc'
     
     opt = pyo.SolverFactory('cbc',executable=solverpath_exe)
     opt.options['seconds'] = 1200
@@ -671,41 +673,14 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
     Total_dispatch_cap = []
     dispatch_offers = []
     dispatch_bids = []
-    unit_g_capacities = {}
-    unit_h_capacities = {}
-    EnergyD = []
-    EnergyC = []
     ws = []
-    
-    if storage_system_inst.type == "PHS":
-    
-        for g in instance.g:
-            unit_g_capacities[str(g)] = []
-            
-        for h in instance.h:
-            unit_h_capacities[str(h)] = []
     
     for d in range(1,49):
         if storage_system_inst.type == "PHS":
             unit_h_subOffers = []
-            unit_h_subFlows = []
-            unit_h_losses = []
             unit_g_subBids = []
-            # Optimisation outputs
-            for h in instance.h:
-                unit_h_subOffers.append(instance.D[d,h].value)  
-                unit_h_subFlows.append(instance.Qt[d,h].value)
-                unit_h_losses.append(instance.QtLoss[d,h].value)
-                unit_h_capacities[str(h)].append(instance.D[d,h].value)
-                
-            for g in instance.g:
-                if instance.C[d,g].value > 0.1:
-                    unit_g_subBids.append(-storage_system_inst.pumps[g-1].P_rated)
-                    unit_g_capacities[str(g)].append(-storage_system_inst.pumps[g-1].P_rated)
-                else:
-                    unit_g_subBids.append(0)
-                    unit_g_capacities[str(g)].append(0)
-                
+            
+            # Optimisation outputs                
             dispatch_offer_cap.append(unit_h_subOffers)
             dispatch_bid_cap.append(unit_g_subBids)
             
@@ -728,7 +703,8 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
         dispatch_offers.append(max_lessThan(offer_PB,float(instance.SP[d][d]),participant_inst.risk_level))
         dispatch_bids.append(min_greaterThan(bid_PB,float(instance.SP[d][d]),participant_inst.risk_level))
         ws.append(instance.w[d].value)
-        EnergyD.append(instance.Ed[d].value)
-        EnergyC.append(instance.Ec[d].value)
+
+    if (day == display.test_day and display.display_arg):
+        display.schedulingOutputs(instance, storage_system_inst, dispatch_offers, dispatch_bids)
         
     return [dispatch_offer_cap,dispatch_bid_cap,dispatch_offers,dispatch_bids,ws,Total_dispatch_cap]
