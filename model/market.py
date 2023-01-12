@@ -1,3 +1,11 @@
+'''
+Define the class for an electricity market.
+
+Classes
+-------
+market
+'''
+
 class market:
     def __init__(self, assumptions):
         self.SPmin = int(assumptions["SPmin"]) # Price floor for the spot market [$/MWh]

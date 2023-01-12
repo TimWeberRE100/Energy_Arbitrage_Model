@@ -1,26 +1,66 @@
+'''
+Display the visual plots and print the statistics for the simulation.
+
+Functions
+---------
+plotOutputs2d
+
+schedulingOutputs
+
+plotOutputs3d
+
+chargingOutputsDay
+
+statistics
+
+chargingOutputsAnnual
+
+chargingOutputsLifetime
+'''
+
 import matplotlib.pyplot as plt
 import matplotlib as mp
-from mpl_toolkits import mplot3d
 import scipy.stats as spst
 import pyomo.environ as pyo
-import numpy as np
+from volatility import volatility
 
 # Turn display on or off
 display_arg = True
 
 # Define the test day
-test_day = 10
+test_day = 364
 
 # Increase font size on plots
 mp.rcParams.update({'font.size': 28,
                     'axes.labelpad': 12,
                     'figure.figsize': (16,10)})
 
-def volatility(price_list):
-    price_vol = np.std(price_list)
-    return price_vol
-
 def plotOutputs2d(x_values, y_values, x_title, y_title, legend_list):
+    '''
+    Generate a plot on 2 axes.
+
+    Parameters
+    ----------
+    x_values : list
+        List of lists that contain the x values for the data.
+    y_values : list
+        List of lists that contain the y values of the data.
+    x_title : string
+        Title of the x axis.
+    y_title : string
+        Title of the left-hand y axis.
+    legend_list : list
+        List of strings that contain the name of each data to be plotted on the figure.
+
+    Returns
+    -------
+    None.
+
+    Side-effects
+    ------------
+    Show the figure in a separate window.
+    '''
+
     fig, ax1 = plt.subplots()
     
     y_axis_count = 1
@@ -54,7 +94,7 @@ def plotOutputs2d(x_values, y_values, x_title, y_title, legend_list):
             axis_assignment = 2
             y_axis_count = 2
             legend2.append(legend_list[legend_index])
-        elif 'Power' in legend_list[legend_index]:
+        elif 'Power' in legend_list[legend_index] or 'Bids' in legend_list[legend_index] or 'Offers' in legend_list[legend_index]:
             colour_list = ['tab:orange','tab:green','tab:purple','tab:pink','tab:olive','tab:cyan']
             colour = colour_list[power_count]
             power_count += 1
@@ -64,6 +104,7 @@ def plotOutputs2d(x_values, y_values, x_title, y_title, legend_list):
             colour = colour_list[misc_count]
             misc_count += 1
             draw_style = 'points'
+            legend1.append(legend_list[legend_index])
         
         # If there is price data, create the second y-axis on the first iteration
         if (y_axis_count == 2) & (price_count == 1):
@@ -74,8 +115,6 @@ def plotOutputs2d(x_values, y_values, x_title, y_title, legend_list):
         if draw_style == 'points':
             ax1.plot(x_values[legend_index],y_values[legend_index],colour,markersize=20)
         else:
-            print(x_values[legend_index])
-            print(y_values[legend_index])
             if axis_assignment == 1:  
                 x_limits[0] = min([x_limits[0], min(x_values[legend_index])])
                 x_limits[1] = max([x_limits[1], max(x_values[legend_index])])
@@ -114,7 +153,32 @@ def plotOutputs2d(x_values, y_values, x_title, y_title, legend_list):
     plt.show()
 
 def schedulingOutputs(solution_inst, storage_system_inst, dispatch_offers, dispatch_bids):
-    
+    '''
+    Display the outputs for the scheduling algorithm on the test day.
+
+    Parameters
+    ----------
+    solution_inst : 
+        Object containing solution from the scheduling algorithm found using the CBC solver and Pyomo package.
+    storage_system_inst : storage_system
+        Object containing storage system attributes and current state.
+    dispatch_offers : list
+        List of dispatch offer prices made by the storage system for the trading day.
+    dispatch_bids : list
+        List of dispatch offer bids made by the storage system for the trading day.
+
+    Returns
+    -------
+    None.
+
+    Side-effects
+    ------------
+    Print the results from the scheduling algorithm on the chosen test day.
+    Plot the scheduled SOC for the test day.
+    Plot the scheduled capacities for the test day.
+    Plot the bid and offer prices for the test day.
+    '''
+
     # Define the output variables
     dispatch_offer_caps = []    # Capacity of offer at each trading interval
     dispatch_bid_caps = []      # Capacity of bid at each trading interval
@@ -231,6 +295,35 @@ def schedulingOutputs(solution_inst, storage_system_inst, dispatch_offers, dispa
     plotOutputs2d(x_values, y_values, "Trading Interval", "Bid/Offer Amount [$/MWh]", legend_list)
 
 def plotOutputs3d(x_values, y_values, z_values, x_title, y_title, z_title, zlim_bool):
+    '''
+    Generate a plot of data along 3 axes.
+
+    Parameters
+    ----------
+    x_values : list
+        List of floats for x values of the data.
+    y_values : list
+        List of floats for y values of the data.
+    z_values : list
+        List of floats for z values of the data.
+    x_title : string
+        Title of the x axis.
+    y_title : string
+        Title of the y axis.
+    z_title : string
+        Title of the z axis.
+    zlim_bool : bool
+        True value denotes a limit of [0,1] on the z-axis
+
+    Returns
+    -------
+    None.
+
+    Side-effects
+    ------------
+    Show the 3-dimensional plot in a separate window.
+    '''
+    
     mp.rcParams.update({'axes.labelpad': 26})
                             
     fig = plt.figure()
@@ -247,6 +340,28 @@ def plotOutputs3d(x_values, y_values, z_values, x_title, y_title, z_title, zlim_
     plt.show()
 
 def chargingOutputsDay(storage_system_inst, daily_memory):
+    '''
+    Display the outputs from the charging module on the test day.
+
+    Parameters
+    ----------
+    storage_system_inst : storage_system
+        Object containing storage system attributes and current state.
+    daily_memory : memory_daily
+        Object containing the data for the charging actitivty on the trading day.
+
+    Returns
+    -------
+    None.
+
+    Side-effects
+    ------------
+    Print the results from the charging module on the chosen test day.
+    Plot the actual SOC for the test day.
+    Plot the turbine/pump head against the SOC for the test day.
+    Plot the turbine/pump head loss against the penstock flow rate for the test day.
+    '''
+
     dispatchIntervals = list(range(1,289))
     
     # Plot SOC for a particular day    
@@ -257,22 +372,48 @@ def chargingOutputsDay(storage_system_inst, daily_memory):
                 
     if storage_system_inst.type == "PHS":
         # Plot head vs SOC
-        legend_list = ["Turbine Head", "SOC"]
-        plotOutputs2d(daily_memory.SOC_day, daily_memory.headTurbine, "Actual SOC", "Head [m]",legend_list)
+        legend_list = ["Turbine Head"]
+        plotOutputs2d([daily_memory.SOC_day], [daily_memory.headTurbine], "Actual SOC", "Head [m]",legend_list)
 
-        legend_list = ["Pump Head", "SOC"]
-        plotOutputs2d(daily_memory.SOC_day, daily_memory.headPump, "Actual SOC", "Head [m]",legend_list)
+        legend_list = ["Pump Head"]
+        plotOutputs2d([daily_memory.SOC_day], [daily_memory.headPump], "Actual SOC", "Head [m]",legend_list)
         
         # Plot head loss vs penstock flow rate
-        legend_list = ["Turbine Head Loss", "Turbine Penstock Flow Rate"]
-        plotOutputs2d(daily_memory.flowRateTurbine, daily_memory.headLossTurbine, "Flow rate [m^3/s]", "Head Loss [m]", legend_list)
+        legend_list = ["Turbine Head Loss"]
+        plotOutputs2d([daily_memory.flowRateTurbine], [daily_memory.headLossTurbine], "Flow rate [m^3/s]", "Head Loss [m]", legend_list)
 
-        legend_list = ["Pump Head Loss", "Pump Penstock Flow Rate"]
-        plotOutputs2d(daily_memory.flowRatePump, daily_memory.headLossPump, "Flow rate [m^3/s]", "Head Loss [m]", legend_list)        
+        legend_list = ["Pump Head Loss"]
+        plotOutputs2d([daily_memory.flowRatePump], [daily_memory.headLossPump], "Flow rate [m^3/s]", "Head Loss [m]", legend_list)        
 
 def statistics(storage_system_inst, memory, timeframe):
+    '''
+    Calculate and print statistics for the simulation.
+
+    Parameters
+    ----------
+    storage_system_inst : storage_system
+        Object containing storage system attributes and current state.
+    memory : memory
+        Object containing simulation data.
+    timeframe : string
+        Either "annual" or "lifetime" to define the timeframe of the memory.
+
+    Returns
+    -------
+    None.
+
+    Side-effects
+    ------------
+    Print the annual or lifetime statistics for the simulation.
+    '''
+
     # Calculate correlation coefficients
-    r1_SP = spst.kendalltau(memory.SP,memory.dispatched_capacity)
+    SP_dispatch_intervals = []
+    for i in memory.SP:
+        for j in range(0,6):
+            SP_dispatch_intervals.append(i)
+
+    r1_SP = spst.kendalltau(SP_dispatch_intervals,memory.dispatched_capacity)
     r2_DP = spst.kendalltau(memory.DP,memory.dispatched_capacity)
 
     # Calculate price volatility
@@ -296,18 +437,42 @@ def statistics(storage_system_inst, memory, timeframe):
         print("Final Internal Resistance of Cells: ", storage_system_inst.R_cell)
 
 def chargingOutputsAnnual(storage_system_inst, annual_memory):
+    '''
+    Generate outputs for the simulation up until the test day for the year.
+
+    Parameters
+    ----------
+    storage_system_inst : storage_system
+        Object containing storage system attributes and current state.
+    annual_memory : memory
+        Object containing the simulation year data.
+
+    Returns
+    -------
+    None.
+
+    Side-effects
+    ------------
+    Print the statistics up until the test day for the year.
+    Plot the SOC of the system up until the test_day for the year.
+    Plot the 3D voltage efficiency graph if the system is a BESS.
+    '''
+
     # Print the annual statistics
     statistics(storage_system_inst, annual_memory, "annual")
 
     # Plot SOC vs time
     legend_list = ["SOC","Dispatch Price"]
     dispatch_intervals = list(range(1,len(annual_memory.SOC)) + 1)
-    plotOutputs2d(dispatch_intervals, annual_memory.SOC, "Dispatch Interval", "State-of-charge", legend_list)
+    x_values = len(legend_list) * [dispatch_intervals]
+    y_values = [annual_memory.SOC] + [annual_memory.dispatch_prices] 
+    plotOutputs2d(x_values, y_values, "Dispatch Interval", "State-of-charge", legend_list)
 
     # Plot 3d efficiency
     if storage_system_inst.type == "BESS":
         plotOutputs3d(annual_memory.SOC, annual_memory.powerMagnitude, annual_memory.voltage_efficiency, "State-of-charge", "Power [MW]", "Voltage Efficiency", True)
 
 def chargingOutputsLifetime(storage_system_inst, simulation_memory):
+    '''Generate outputs for the simulation over the system lifetime.'''
     # Print the annual statistics
     statistics(storage_system_inst, simulation_memory, "lifetime")

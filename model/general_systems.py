@@ -1,5 +1,27 @@
+'''
+Define the class generally applicable to all storage systems.
+
+Classes
+-------
+general_systems
+'''
+
 class general_systems:
+    '''
+    Input to the storage_system constructor for all storage system objects.
+    '''
     def __init__(self, assumptions, linear_assumptions):
+        '''
+        Initialise attributes of a general storage system object.
+
+        Parameters
+        ----------
+        assumptions : dataframe
+            Dataframe of assumptions defined by the user in the ASSUMPTIONS.csv file.
+        linear_assumptions : dataframe
+            Dataframe of linearisation parameters defined by the user in the linearisations.csv file.
+        '''
+
         # Technical parameters initialised
         self.obj_type = "general"
         self.type = assumptions["system_type"] # Type of storage system (e.g. PHS, BESS)
@@ -47,7 +69,7 @@ class general_systems:
 
     def linearParameterDF(self, linearisation_df, parameterName):
         '''
-        Builds a dataframe for a particular linearisation parameter
+        Build a dataframe for a particular linearisation parameter
         
         Parameters
         ----------
@@ -66,17 +88,22 @@ class general_systems:
         return parameterValue_df
 
     def testToCurrent(self):        
+        '''Update the previous state of the system if the test state is accepted (successful dispatch instruction).'''
         self.SOC_pre = self.SOC_current
         self.P_pre = self.P_current
     
     def idleInterval(self):
+        '''Update the previous state of the system if the test state is rejected (failed dispatch instruction).'''
         self.P_pre = 0
 
     def updateSOC_current(self, SOC_exp):
+        '''Accept the test SOC of the system for successful dispatch instruction.'''
         self.SOC_current = SOC_exp
 
     def updateP_current(self, P_exp):
+        '''Accept the test power of the system for successful dispatch instruction.'''
         self.P_current = P_exp
 
     def updateCycleTracker(self, value):
+        '''Update the cycle tracker for the system.'''
         self.cycle_tracker = value

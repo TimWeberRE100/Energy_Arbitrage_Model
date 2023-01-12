@@ -1,3 +1,7 @@
+'''
+Function that calculates the volatility (standard deviation) of a list of prices.
+'''
+
 import numpy as np
 
 def volatility(price_list):

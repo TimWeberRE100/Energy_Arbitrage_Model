@@ -1,27 +1,40 @@
+'''
+Calculate the levelised cost of storage metrics of the system over the lifetime.
+
+Functions
+---------
+EOL_LCOS
+
+EOL_LCOS_Deg
+'''
+
 def EOL_LCOS(annualDischargedEnergy,annual_TA_dis,annual_TA_ch,storage_system_inst,Year):
     '''
-    Calculate the LCOS metrics at the end of the year for the PHS.
+    Calculate the LCOS metrics at the end of the year for the non-degrading storage system (e.g. PHS).
 
     Parameters
     ----------
     annualDischargedEnergy : list
         List of daily energy discharged by the system in the year.
-    annualChargedEnergy : list
-        List of daily energy charged by the system in the year.
     annual_TA_dis : list
         List of daily trading amounts from discharging by the system in the year.
     annual_TA_ch : list
         List of daily trading amounts from charging by the system in the year.
-    system_assumptions : dictionary
-        Dictionary of assumed parameters for the system.
+    storage_system_inst : storage_system
+        Object containing storage system attributes and current state.
     Year : integer
         Year from which prices are used.
 
     Returns
     -------
-    list
-        List containing RADP and AADP.
+    RADP : float
+        Long-run marginal costs of the system (required average discharge price)
+    AADP : float
+        Long-run marginal revenue of the system (available average discharge price)
 
+    Side-effects
+    ------------
+    None.
     '''
         
     # Define annual parameter lists
@@ -64,28 +77,31 @@ def EOL_LCOS(annualDischargedEnergy,annual_TA_dis,annual_TA_ch,storage_system_in
 
 def EOL_LCOS_Deg(simDischargedEnergy,sim_TA_dis,sim_TA_ch,Year,storage_system_inst):
     '''
-    Calculate the LCOS metrics at the end of the year for the BESS.
+    Calculate the LCOS metrics at the end of the simulation for the degrading storage system (e.g. BESS).
 
     Parameters
     ----------
     simDischargedEnergy : float
         Total discharged energy over the lifetime.
-    simChargedEnergy : float
-        Total charged energy over the lifetime.
     sim_TA_dis : float
         Total trading amount from discharging over the system lifetime.
     sim_TA_ch : float
         Total trading amount from charging over the system lifetime.
-    system_assumptions : dictionary
-        Dictionary of assumed parameters for the system.
     Year : integer
         Year from which prices are used.
+    storage_system_inst : storage_system
+        Object containing storage system attributes and current state.
 
     Returns
     -------
-    list
-        List containing RADP and AADP.
+    RADP : float
+        Long-run marginal costs of the system (required average discharge price)
+    AADP : float
+        Long-run marginal revenue of the system (available average discharge price)
 
+    Side-effects
+    ------------
+    None.
     '''
     
     # Define annual parameter lists

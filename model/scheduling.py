@@ -1,6 +1,7 @@
 import pyomo.environ as pyo
 from pyomo.opt.results import SolverStatus
 import numpy as np
+import pandas as pd
 
 import battery
 import constants as const
@@ -658,8 +659,7 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
     instance = model.create_instance()
     
     # solverpath_exe='path/to/cbc'
-    solverpath_exe='/usr/bin/cbc'
-    #solverpath_exe='C:\\Users\\peckh\\anaconda3\\Library\\bin\\cbc'
+    solverpath_exe= pd.read_csv("cbc_path.csv")['Filepath'].iloc[0]
     
     opt = pyo.SolverFactory('cbc',executable=solverpath_exe)
     opt.options['seconds'] = 1200
@@ -679,6 +679,16 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
         if storage_system_inst.type == "PHS":
             unit_h_subOffers = []
             unit_g_subBids = []
+
+            # Optimisation outputs
+            for h in instance.h:
+                unit_h_subOffers.append(instance.D[d,h].value)  
+                
+            for g in instance.g:
+                if instance.C[d,g].value > 0.1:
+                    unit_g_subBids.append(-storage_system_inst.pumps[g-1].P_rated)
+                else:
+                    unit_g_subBids.append(0)
             
             # Optimisation outputs                
             dispatch_offer_cap.append(unit_h_subOffers)

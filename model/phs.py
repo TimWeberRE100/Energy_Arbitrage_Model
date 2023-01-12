@@ -1,8 +1,21 @@
+'''
+Define the classes relevant to pumped hydro systems.
+
+Classes
+-------
+pump_turb
+
+phs
+'''
+
 import numpy as np
 import constants as const
 import debug
 
 class pump_turb:
+    '''
+    Class that defines pump or turbine objects.
+    '''
     def __init__(self, unit_type, phs_assumptions, index):
         if unit_type == "pump":
             index_pref = "g"
@@ -29,6 +42,9 @@ class pump_turb:
         self.RT_t = 0 # Ramp time for the unit in the dispatch interval [s]
 
 class phs:
+    '''
+    Input to the storage_system constructor for pumped hydro system objects.
+    '''
     def __init__(self,assumptions, phs_assumptions):
         self.obj_type = "phs"
 

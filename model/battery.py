@@ -1,9 +1,21 @@
+'''
+Define the class and functions relevant to batteries.
+
+Classes
+-------
+battery
+
+Functions
+---------
+U_OCV_calc
+'''
+
 import numpy as np
 import constants as const
 
 def U_OCV_calc(SOC):
         '''
-        Calculates the open-circuit voltage of the cells at a particular SOC. Updates the battery's attribute.
+        Calculate the open-circuit voltage of the cells at a particular SOC.
 
         Parameters
         ----------
@@ -15,7 +27,11 @@ def U_OCV_calc(SOC):
         U_cell : float
             Open circuit voltage of the cell
 
+        Side-effects
+        ------------
+        None
         '''
+
         n1 = 5.163*np.exp(-(((SOC-1.794)/1.665)**2))
         n2 = 0.3296*np.exp(-(((SOC-0.6405)/0.3274)**2))
         n3 = 1.59*np.exp(-(((SOC-0.06475)/0.4406)**2))
@@ -24,7 +40,18 @@ def U_OCV_calc(SOC):
         return U_cell
 
 class battery:
+    '''
+    Input to the storage_system constructor for battery objects.
+    '''
     def __init__(self, assumptions):
+        '''
+        Initialise attributes of a battery object.
+
+        Parameters
+        ----------
+        assumptions : dataframe
+            Dataframe of assumptions defined by the user in the ASSUMPTIONS.csv file.
+        '''
         self.obj_type = "bess"
 
         # Assumed parameters initialised
@@ -59,7 +86,7 @@ class battery:
 
     def U_OCV_assign(self, SOC):
         '''
-        Calculates the open-circuit voltage of the cells at a particular SOC. Updates the battery's attribute.
+        Calculate the open-circuit voltage of the cells at a particular SOC. Updates the battery's attribute.
 
         Parameters
         ----------
@@ -68,15 +95,20 @@ class battery:
 
         Returns
         -------
-        None
+        None.
 
+        Side-effects
+        ------------
+        Update self.U_cell
+
+        Update self.U_batt
         '''
         self.U_cell = U_OCV_calc(SOC)
         self.U_batt = self.U_cell * self.series_cells
 
     def R_cell_calc(self, year_count, day, dispatch_interval, SOC):
         '''
-        Calculates the internal resistance of the cells based on an empirical model.
+        Calculate the internal resistance of the cells based on an empirical model.
 
         Parameters
         ----------
@@ -86,12 +118,17 @@ class battery:
             Current day in the year.
         dispatch_interval : integer
             Current dispatch interval in the day.
+        SOC : float
+            State of charge of the system.
 
         Returns
         -------
         self.R_cell : float
             Internal resistance of the cells.
 
+        Side-effects
+        ------------
+        Update self.SOC_sum
         '''
         
         # Calculate the number of months that have been simulated
@@ -117,13 +154,21 @@ class battery:
 
         Parameters
         ----------
-        None
+        SOC : float
+            State of charge of the system.
+        power : float
+            Power output of the system.
+        energy_capacity : float
+            Energy capacity of the system.
 
         Returns
         -------
         self.efficiency_volt : float
             Voltage efficiency of the battery object.
 
+        Side-effects
+        ------------
+        None.
         '''
         
         # Calculate the radicand
@@ -131,7 +176,6 @@ class battery:
         
         # Error handling for negative radicand
         if sqrt_var < 0:
-            print(sqrt_var)
             self.efficiency_volt = 0.5
         
         # Voltage efficiency based on positive radicand
@@ -142,19 +186,35 @@ class battery:
 
     def SOC_max_aged(self, delT, SOC, SOC_pre, power): 
         '''
-        Update the state of health of the battery based on cycle or calendar ageing.
-        Assumes all cells age at the same rate.
+        Update the state of health of the battery based on cycle or calendar ageing, assuming all cells age at the same rate.
 
         Parameters
         ----------
         delT : float
             Length of the dispatch interval [h].
+        SOC : float
+            State of charge of the system.
+        SOC_pre : float
+            State of charge of the system in the previous dispatch interval.
+        power : float
+            Power output of the system.
 
         Returns
         -------
         self.SOC_max : float
             State of health of the battery object.
 
+        Side-effects
+        ------------
+        Update self.I_filt
+        Call self.U_OCV_assign
+        Update self.cycLossCurrentSum
+        Update self.cycLossIntervals
+        Update self.Ah_throughput
+        Update self.SOC_max_loss_cyc
+        Update self.calLossTime
+        Update self.calLossIntervals
+        Update self.calLossCurrentSum
         '''
         # Update filtered current value
         self.I_filt = 10**6*power / (74*6*8*33*self.U_batt)
@@ -186,7 +246,6 @@ class battery:
             alpha = 370.3 #J/mol/A
 
             C_cyc_loss = B_cyc*np.exp((-Ea_cyc + alpha*I_avg)/(const.R*self.temp))*((self.Ah_throughput)**z_cyc) # % per cell
-            print([SOC, SOC_pre])
             
             self.SOC_max_loss_cyc = C_cyc_loss/100
         
@@ -220,6 +279,9 @@ class battery:
         return self.SOC_max
     
     def incrementDispatchInterval(self):
+        '''
+        Update the current dispatch interval for the system's life.
+        '''
         self.dispatch_intervals += 1
 
     def testToCurrent(self):

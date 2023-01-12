@@ -1,3 +1,11 @@
+'''
+Define the class for an electricity market participant.
+
+Classes
+-------
+participant
+'''
+
 from pandas import read_csv
 
 class participant:

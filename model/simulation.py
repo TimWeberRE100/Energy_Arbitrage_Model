@@ -67,17 +67,17 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
     imperfectSP_day = imperfectSP[(total_days_cumulative*48+day*48):(total_days_cumulative*48+forecasting_horizon+day*48)]
     DP_day = DP[(day*288):(288+day*288)]
     
-    # Bid and offer price bands for no risk hedging
-    offer_PB = [-1000]
-    bid_PB = [16000]
+    ## Bid and offer price bands for no risk hedging
+    #offer_PB = [-1000]
+    #bid_PB = [16000]
     
     # Define bid/offer price bands
-    # if storage_system_inst.type == "BESS":
-    #     offer_PB = participant_inst.offers[total_days_cumulative+day - (365*6+366*2)][1:11]
-    #     bid_PB = participant_inst.bids[total_days_cumulative+day - (365*6+366*2)][1:11]
-    # else:
-    #     offer_PB = participant_inst.offers[total_days_cumulative+day][1:11]
-    #     bid_PB = participant_inst.bids[total_days_cumulative+day][1:11]
+    if storage_system_inst.type == "BESS":
+        offer_PB = participant_inst.offers[total_days_cumulative+day - (365*6+366*2)][1:11]
+        bid_PB = participant_inst.bids[total_days_cumulative+day - (365*6+366*2)][1:11]
+    else:
+        offer_PB = participant_inst.offers[total_days_cumulative+day][1:11]
+        bid_PB = participant_inst.bids[total_days_cumulative+day][1:11]
     
     offer_PB.reverse()
 
@@ -97,7 +97,7 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
     # Determine settlement from actual charging behaviour 
     TA_day = settlement.settlementModel(storage_system_inst,dispatchedEnergy,SP_day)
         
-    return dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst
+    return dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst, dispatchedEnergy, DP_day
 
 def main(ifilename):
     '''
@@ -167,7 +167,7 @@ def main(ifilename):
         # Create annual memory
         annual_memory = memory.memory()
         
-        # Define T+0 dispatch prices for region
+        # Defin'/usr/bin/cbc'e T+0 dispatch prices for region
         DP_df = pd.read_csv('data/DispatchPrices_'+str(year)+'.csv')
         DP_List = list(DP_df['Regions '+region+' Dispatch Price ($/MWh)'])
         
@@ -180,22 +180,22 @@ def main(ifilename):
         # Define cumulative days since 1 January 2010 04:30 until 1 January YEAR 04:30
         total_days_cumulative = (year-2010)*365+(year-2010+1)//4
             
-        #for day in range(0,total_days):
-        for day in range(0,15):
+        for day in range(0,total_days):
             print(ifilename, year, iteration, day)
             
             dailyOutputs = dailySimulation(SP_List,DP_List,day,year,total_days_cumulative,iteration,imperfectSP_List,forecasting_horizon,storage_system_inst, participant_inst, market_inst)
             
             if storage_system_inst.type == "PHS":
-                annual_memory.DischargedEnergy.append(sum([sum(dailyOutputs[0][0][t]) for t in range(0,288)])*(5/60))
-                annual_memory.ChargedEnergy.append(sum([sum(dailyOutputs[0][1][t]) for t in range(0,288)])*(5/60))
+                annual_memory.dispatched_capacity.extend(sum(dailyOutputs[0][0][t]) if sum(dailyOutputs[0][0][t]) != 0 else sum(dailyOutputs[0][1][t]) if sum(dailyOutputs[0][1][t]) != 0 else 0 for t in range(0,288))
             else:
-                annual_memory.DischargedEnergy.append(sum(dailyOutputs[0][0])*(5/60))
-                annual_memory.ChargedEnergy.append(sum(dailyOutputs[0][1])*(5/60))
+                annual_memory.dispatched_capacity.extend(dailyOutputs[0][0][t] if dailyOutputs[0][0][t] != 0 else dailyOutputs[0][1][t] if dailyOutputs[0][1][t] != 0 else 0 for t in range(0,288))
             
+            annual_memory.DischargedEnergy.append(sum(dailyOutputs[5][0]))
+            annual_memory.ChargedEnergy.append(sum(dailyOutputs[5][1]))
             annual_memory.TA_dis.append(sum(dailyOutputs[1][0]))
             annual_memory.TA_ch.append(-sum(dailyOutputs[1][1]))
             annual_memory.SP.extend(dailyOutputs[2])
+            annual_memory.DP.extend(dailyOutputs[6])
             annual_memory.dailyCycles.append(dailyOutputs[3])
             storage_system_inst = dailyOutputs[4]
                 
@@ -210,6 +210,9 @@ def main(ifilename):
         simulation_memory.capacityFactor.append(sum(annual_memory.DischargedEnergy) / (int(system_assumptions["power_capacity"]) * total_days * 24))
         simulation_memory.averageCycleTime.append(sum(annual_memory.dailyCycles) / total_days)
         simulation_memory.finalSOCmax.append(storage_system_inst.SOC_max)
+        simulation_memory.dispatched_capacity.extend(annual_memory.dispatched_capacity)
+        simulation_memory.SP.extend(annual_memory.SP)
+        simulation_memory.DP.extend(annual_memory.DP)
 
         if storage_system_inst.type == "BESS":
             simulation_memory.finalRcell.append(storage_system_inst.R_cell)
@@ -231,7 +234,7 @@ def main(ifilename):
             EOL_results = pd.DataFrame(data = simulation_memory.data, columns=['Region','Year','Iteration','TA_discharging [$]','TA_charging [$]','DischargedEnergy [MWh]', 'ChargedEnergy [MWh]','averageCycleTime [cycles/day]','capacityFactor','final_SOCmax','final_RCell [Ohms]','RADP [$/MWh]','AADP [$/MWh]','Price Volatility','forecast_horizon','system type','lifetime'])
             EOL_results.to_csv(results_filename)
         
-    # Determine EOL resultsfor BESS
+    # Determine EOL results for BESS
     if system_assumptions["system_type"] == "BESS":
         LCOS = lcos.EOL_LCOS_Deg(simulation_memory.DischargedEnergy,simulation_memory.TA_dis,simulation_memory.TA_ch,year,storage_system_inst)
         RADP = LCOS[0]
@@ -245,11 +248,10 @@ def main(ifilename):
         display.chargingOutputsLifetime(storage_system_inst, simulation_memory)
 
 if __name__ == '__main__':
-    '''
+    
     # Create dataframe of filenames
     result_filenames = pd.read_csv("result_filenames.csv")["Filename"].values.tolist()
     
-    # Define the number of workers to be spawned
     try:
         workersCount = len(os.sched_getaffinity(0))
     except:
@@ -258,6 +260,4 @@ if __name__ == '__main__':
     # Spawn workers and run the embarassingly parallel processes
     with concurrent.futures.ProcessPoolExecutor(max_workers=workersCount) as executor:
         results = executor.map(main, result_filenames)
-    '''
     
-    main("test")

@@ -1,3 +1,11 @@
+'''
+Dispatch engine for a price-taker storage system.
+
+Functions
+---------
+dispatchModel
+'''
+
 def dispatchModel(dispatch_bidsOffers, dispatch_prices,storage_system_inst):
     '''
     Generate the dispatch instructions for the trading day.
@@ -9,11 +17,11 @@ def dispatchModel(dispatch_bidsOffers, dispatch_prices,storage_system_inst):
     dispatch_prices : list
         List of dispatch prices for the trading day.
     storage_system_inst : storage_system
-        Object containing storage system parameters and current state.
+        Object containing storage system attributes and current state.
 
     Returns
     -------
-    list
+    dispatchInstructions
         List containing dispatch instructions for the trading day.
 
     '''

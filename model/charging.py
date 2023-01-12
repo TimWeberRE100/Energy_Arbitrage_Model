@@ -1,3 +1,11 @@
+'''
+Define the charging behaviour of the storage system.
+
+Functions
+---------
+chargingModel
+'''
+
 import memory
 import debug
 import display
@@ -12,14 +20,12 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
         List of outputs from the dispatch model.
     day : integer
         Count of days in the year on the current trading day.
-    phs_assumptions : dictionary
-        Dictionary of assumed parameters for the PHS turbines and pumps.
     year : integer
         Count of the year iterations on the current trading day.
     storage_system_inst : storage_system
-        Object containing storage system parameters and current state.
+        Object containing storage system attributes and current state.
     market_inst : market
-        Object containing market parameters.
+        Object containing market attributes.
     dp_list : list
         List of dispatch prices for each dispatch interval in the trading day.
 
@@ -30,7 +36,7 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
     daily_cycles : int
         Count of the number of charge/discharge cycles within the day.
     storage_system_inst : storage_system
-        Object containing the storage system parameters and current state.
+        Object containing the storage system attributes and current state.
     '''
     
     # Define system level parameters
@@ -41,7 +47,7 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
     
     # Define memory for the day
     daily_memory = memory.memory_daily(storage_system_inst)
-    memory.dispatch_prices = dp_list
+    daily_memory.dispatch_prices = dp_list
     
     # Perform charging/discharging operation for each dispatch interval 
     for t in range(0,len(dispatchInstructions)):
