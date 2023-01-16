@@ -1,0 +1,73 @@
+Assumption,Value,Units,Description,Backup,,
+P_initial,0,MW,Initial power at start of simulation,0,0,0
+SOC_initial,0.5,"[0,1]",Initial SOC at start of simulation,0.5,0.5,0.5
+energy_capacity,400,MWh,,400,129,10
+power_capacity,100,MW,,100,100,15
+efficiency_sys,0,"(0,1]",,0,0.94,0.91
+P_min,-100,MW,,-100,-100,-13.37
+P_max,100,MW,,100,100,13.37
+SOC_min,0,"[0,1]",,0,0.15,0
+SOC_max_initial,1,"[0,1]",,1,1,1
+system_type,PHS,string,BESS or PHS,PHS,BESS,General
+mlf_load,0.95,"(0,1]",,0.95,0.979,0.979
+mlf_gen,0.95,"(0,1]",,0.95,0.9838,0.9838
+dlf_load,1,"(0,1]",,1,1,1
+dlf_gen,1,"(0,1]",,1,1,1
+SPmin,-1000,$/MWh,,-1000,-1000,-1000
+SPmax,12000,$/MWh,,12000,12000,12000
+Dispatch_interval_time,5,min,,5,5,5
+P_standby,0,MW,,0,0.5,0
+VOMd,0,$/MWh,,0,0,0
+VOMc,0,$/MWh,,0,0,0
+OvernightCapitalCost (energy),466000,$/MWh,,466000,370000,
+OvernightCapitalCost (power),1861000,$/MW ,,1861000,370000,
+OtherOCC,0,$,,0,7000000,
+discountRate,0.059,"(0,1]",Assumed equal to WACC,0.059,0.059,0.04
+i,0,"(0,1]",Investment tax credit,0,0,0
+alpha,0.3,"(0,1]",Effective corporate income tax rate,0.3,0.3,0.26
+FOM,18.3,$/kW-year,,18.3,4.833,8.1
+H_p_effective,140,m,,140,0,0
+H_t_effective,130,m,,130,0,0
+V_res_upper,1152000,m^3,,1152000,0,0
+Lifetime,50,years,,50,10,20
+H_r,76.5,m,,76.5,0,
+H_ur,76.5,m,,76.5,0,
+H_lr,41,m,,41,0,
+V_res_lower,1152000,m^3,,1152000,0,
+efficiency_ch_general,0,,,0,0,0.91
+efficiency_dis_general,0,,,0,0,0.91
+Temp,298,Kelvin,,298,298,
+g_index_range,1,,,1,0,
+h_index_range,1,,,1,0,
+degradation_penalty,0,$/MWh,,0,100000,
+fB,0,,,0,0.0000271,
+eol,0,,,0,0.8,
+R_cell_initial,0,Ohm,,0,0.03,
+series_cells,0,integer,,0,96,
+parallel_cells,0,integer,,0,117216,
+pump_penstock_pipe_diameter,6,m,,6,0,
+pump_penstock_pipe_length,420,m,,420,0,
+turbine_penstock_pipe_diameter,6,m,,6,0,
+turbine_penstock_pipe_length,420,m,,420,0,
+pump_K_fittings,10,,,10,0,
+turbine_K_fittings,10,,,10,0,
+pump_abs_roughness,0.8,mm,,0.8,0,
+turbine_abs_roughness,0.8,mm,,0.8,0,
+H_tl_effective,6,m,,6,0,
+H_pl_effective,2,m,,2,0,
+MOL_lr,20,m,,20,0,
+MOL_ur,165,m,,165,0,
+RT_T_TNL,20,s,,20,0,
+RT_TNL_P,370,s,,370,0,
+RT_P_TNL,230,s,,230,0,
+RT_TNL_T,30,s,,30,0,
+cell_energy_capacity [Ah],0,Ah,,0,3.2,
+risk_level,10,,0 means first price band above/below forecast price,10,0,
+resultsTitle,QLD_PHS_4h_FH48_EOL_Results_Imperfect,,,SA_PHS_4h_noPB_48TI_EOL_Results_Imperfect,BESS_1h_noPB_48TI_EOL_Results_Imperfect,
+DegC,0,,,0,0,
+Year,2019,,,2010,2010,
+State,QLD,,,SA,SA,
+Iterations,1,,,1,1,
+forecasting_horizon,72,,,48,48,
+offers_csv,wivenhoeGenOffers.csv,,,wivenhoeGenOffers.csv,hornsdaleGenOffers.csv,
+bids_csv,wivenhoeLoadBids.csv,,,wivenhoeLoadBids.csv,hornsdaleLoadBids.csv,
