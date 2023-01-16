@@ -1,3 +1,19 @@
+'''
+Functions that perform the day-ahead scheduling of the storage system.
+
+Functions
+---------
+Pmax_ij_aged
+
+Ploss_m_aged
+
+min_greaterThan
+
+max_lessThan
+
+schedulingModel
+'''
+
 import pyomo.environ as pyo
 from pyomo.opt.results import SolverStatus
 import numpy as np
@@ -11,7 +27,7 @@ import display
 
 def Pmax_ij_aged(SOC,Ubatt_SOC,storage_system_inst):
     '''
-    Calculates the maximum power limit for a particular state of charge, accounting for efficiency fade.
+    Calculate the maximum power limit for a particular state of charge, accounting for efficiency fade.
 
     Parameters
     ----------
@@ -20,13 +36,16 @@ def Pmax_ij_aged(SOC,Ubatt_SOC,storage_system_inst):
     Ubatt_SOC : float
         Open-circuit voltage of the battery at the specified SOC.
     storage_system_inst : storage_system
-        Object containing storage system parameters and current state.
+        Object containing storage system attributes and current state.
 
     Returns
     -------
     Pmax_current : float
-        Maximum power limit ensuring efficiency losses > 80%.
+        Maximum power limit ensuring efficiency > 80%.
 
+    Side-effects
+    ------------
+    None.
     '''
 
     numerator = ((storage_system_inst.efficiency_sys**2)/4) - (0.8 - 0.5*storage_system_inst.efficiency_sys)**2
@@ -39,7 +58,7 @@ def Pmax_ij_aged(SOC,Ubatt_SOC,storage_system_inst):
 
 def Ploss_m_aged(power,storage_system_inst):
     '''
-    Calculates the power loss for a particular dispatch power, accounting for efficiency fade.
+    Calculate the power loss for a particular dispatch power, accounting for efficiency fade.
 
     Parameters
     ----------
@@ -53,7 +72,11 @@ def Ploss_m_aged(power,storage_system_inst):
     Ploss_current : float
         Power loss at the specified dispatch power.
 
+    Side-effects
+    ------------
+    None.
     '''
+
     numerator = power*storage_system_inst.R_cell*storage_system_inst.cell_e*storage_system_inst.U_cell_nom
     denominator = storage_system_inst.efficiency_sys*0.5*storage_system_inst.energy_capacity*storage_system_inst.U_cell_nom
     radicand = 0.25 - numerator / denominator
@@ -69,8 +92,7 @@ def Ploss_m_aged(power,storage_system_inst):
 
 def min_greaterThan(load_PB,SP_s,risk_level):
     '''
-    Calculates the minimum load price band that is greater than the specified spot price, accounting
-    for the level of risk hedging.
+    Calculate the minimum load price band that is greater than the specified spot price, accounting for the level of risk hedging.
 
     Parameters
     ----------
@@ -87,7 +109,11 @@ def min_greaterThan(load_PB,SP_s,risk_level):
     float
         The price band used for the load bid in the trading interval.
 
+    Side-effects
+    ------------
+    None.
     '''
+
     for b in range(0,len(load_PB)):
         if (load_PB[b] > SP_s) and (b + risk_level <= 9):
             return load_PB[b+risk_level]
@@ -113,7 +139,11 @@ def max_lessThan(gen_PB_reverse,SP_s,risk_level):
     float
         The price band used for the generator offer in the trading interval.
 
+    Sde-effects
+    -----------
+    None.
     '''
+
     for o in range(0,len(gen_PB_reverse)):
         if (gen_PB_reverse[o] < SP_s) and (o + risk_level <= 9):
             return gen_PB_reverse[o+risk_level]
@@ -121,8 +151,9 @@ def max_lessThan(gen_PB_reverse,SP_s,risk_level):
 
 def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_inst, participant_inst, market_inst):
     '''
-    Uses Pyomo library to define the model, then cbc (COIN-OR branch-and-cut) solver to optimise solution.
-    Assumes dispatch capacities can be real numbers.
+    Use Pyomo package to define the scheduling model, then cbc (COIN-OR branch-and-cut) solver to optimise solution.
+    
+    Assume dispatch capacities can be real numbers.
 
     Parameters
     ----------
@@ -145,9 +176,22 @@ def schedulingModel(SP,day,offer_PB,bid_PB,forecasting_horizon, storage_system_i
 
     Returns
     -------
-    list
-        List of bid and offer capacities, bid and offer price bands, and scheduled behaviour.
+    dispatch_offer_cap : list
+        List of integers for the offer capacities for the following trading day.    
+    dispatch_bid_cap : list
+        List of integers for the bid capacities for the following trading day.
+    dispatch_offers : list
+        List of floats for the offer prices for the following trading day.
+    dispatch_bids : list
+        List of floats for the bid prices for the following trading day.
+    ws : list
+        List of integers [0,1] defining whether the system was scheduled to be idle or charging/discharging for each trading interval.
+    Total_dispatch_cap : list
+        List of integers for the scheduled charging or discharing capacities for the following trading day.
 
+    Side-effects
+    ------------
+    None.
     '''
 
     # Create abstract model object

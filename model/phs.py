@@ -46,6 +46,17 @@ class phs:
     Input to the storage_system constructor for pumped hydro system objects.
     '''
     def __init__(self,assumptions, phs_assumptions):
+        '''
+        Initialise attributes of a battery object.
+
+        Parameters
+        ----------
+        assumptions : dataframe
+            Dataframe of assumptions defined by the user in the ASSUMPTIONS.csv file.
+        phs_assumptions : dataframe
+            Dataframe of assumptions defined by the user in the phs_assumptions.csv file.
+        '''
+
         self.obj_type = "phs"
 
         # Reservoir parameters initialised        
@@ -109,6 +120,9 @@ class phs:
         self.H_pl_t : float
             Pump head loss based on pump flow rate for current dispatch interval.
 
+        Side-effects
+        ------------
+        None.
         '''
         
         # Define variables and calculate head loss
@@ -134,6 +148,9 @@ class phs:
         self.H_tl_t : float
             Turbine head loss based on turbine flow rate for current dispatch interval.
 
+        Side-effects
+        ------------
+        None.
         '''
         
         # Define variables and calculate head loss
@@ -156,13 +173,17 @@ class phs:
 
         Parameters
         ----------
-        None.
+        SOC : float
+            State of charge of the system.
 
         Returns
         -------
         self.H_p_t : float
             Net head for pump in dispatch interval
 
+        Side-effects
+        ------------
+        Call the pumpHeadLoss method to update the pump head loss.
         '''
 
         if self.Q_pump_penstock_t > 0:
@@ -177,18 +198,27 @@ class phs:
 
     def Q_pump(self, pump_index, SOC):
         '''
-        Flow rate for a pump unit.
+        Update flow rate for a pump unit.
 
         Parameters
         ----------
         pump_index : integer
             Index for the pump unit to which the flow rate corresponds.
+        SOC : float
+            State of charge of the system.
 
         Returns
         -------
         self.pumps[pump_index].Q_t : float
             Pump flow rate during dispatch interval.
-
+        
+        Side-effects
+        ------------
+        Call the pumpHead method to update the pump head.
+        Update the Q_previous attribute of the pump.
+        Update Q_t attribute of the pump.
+        Update self.Q_pump_penstock_t.
+        Call the pumpEfficiency method to update the efficiency of the pump.
         '''
 
         self.pumpHead(SOC)
@@ -210,18 +240,26 @@ class phs:
 
     def Q_turbine(self, turbine_index, SOC):
         '''
-        Flow rate for a turbine unit
+        Update flow rate for a turbine unit.
 
         Parameters
         ----------
         turbine_index : integer
             Index for the turbine unit to which the flow rate corresponds.
+        SOC : float
+            State of charge of the system.
 
         Returns
         -------
         self.turbines[turbine_index].Q_t : float
             Turbine flow rate during dispatch interval.
-
+        
+        Side-effects
+        ------------
+        Call the turbineHead method to update the turbine head.
+        Update the Q_previous attribute of the turbine.
+        Update Q_t of the turbine.
+        Call the turbineEfficiency method to update the efficiency of the turbine.
         '''
 
         self.turbineHead(SOC)
@@ -244,13 +282,17 @@ class phs:
 
         Parameters
         ----------
-        None.
+        SOC : float
+            State of charge of the system.
 
         Returns
         -------
         self.H_t_t : float
             Net head of the turbines [m].
 
+        Side-effects
+        ------------
+        Call the turbineHeadLoss method to update the turbine head loss.
         '''
         
         if self.Q_turbine_penstock_t > 0:
@@ -295,7 +337,11 @@ class phs:
         self.turbines[turbine_index].efficiency_t : float
             Efficiency of the turbine unit.
 
+        Side-effects
+        ------------
+        None.
         '''
+
         # Define parameters
         Q_ratio_turb_h = self.turbines[turbine_index].Q_t / self.turbines[turbine_index].Q_peak
         
@@ -309,6 +355,24 @@ class phs:
         return self.turbines[turbine_index].efficiency_t
     
     def testToCurrent(self):
+        '''
+        Update the values for the previous dispatch interval if the tested charging/discharging was accepted.
+
+        Parameters
+        ----------
+        None.
+
+        Returns
+        -------
+        None.
+
+        Side-effects
+        ------------
+        Updates the Q_previous attributes of all pumps and turbines.
+        Updates self.Q_pump_penstock_pre.
+        Updates self.Q_turbine_penstock_pre.
+        '''
+
         for g in range(0,self.g_range):
             self.pumps[g].Q_previous = self.pumps[g].Q_t
             self.pumps[g].P_previous = self.pumps[g].P_t
@@ -322,6 +386,24 @@ class phs:
         self.Q_turbine_penstock_pre = self.Q_turbine_penstock_t
 
     def idleInterval(self):
+        '''
+        Update the values for the previous dispatch interval if the tested charging/discharging was rejected.
+
+        Parameters
+        ----------
+        None.
+
+        Returns
+        -------
+        None.
+
+        Side-effects
+        ------------
+        Updates the Q_previous attributes of all pumps and turbines.
+        Updates self.Q_pump_penstock_pre.
+        Updates self.Q_turbine_penstock_pre.
+        '''
+
         for g in range(0,self.g_range):
             self.pumps[g].Q_previous = 0
             self.pumps[g].P_previous = 0
@@ -335,6 +417,38 @@ class phs:
         self.Q_turbine_penstock_pre = 0
 
     def steadyStateCalc(self, dispatch_instruction_powers, SOC_pre, delT):
+        '''
+        Determine the steady state flow of the system in the dispatch interval.
+
+        Parameters
+        ----------
+        dispatch_instruction_powers : list
+            List of floats defining the charging and discharging instructions for each pump and turbine.
+        SOC_pre : float
+            State-of-charge of the system in the previous dispatch interval.
+        delT : float
+            Dispatch interval length.
+
+        Returns
+        -------
+        SOC_exp : float
+            The tested state-of-charge assuming that the storage system follows the dispatch instructions.
+
+        Side-effects
+        ------------
+        Update self.Q_pump_penstock_t
+        Update self.Q_turbine_penstock_t
+        Update self.H_pl_t
+        Update the efficiency_t attribute of all pumps and turbines.
+        Update the P_t attribute of all pumps and turbines.
+        Call the Q_pump function to update the pump flow rate
+        Call the pumpHead function to update the pump head
+        Update self.H_tl_t
+        Call the Q_turbine function to update the turbine flow rate
+        Call the turbineHead function to update the turbine head
+        Update self.efficiency_total_t
+        '''
+
         # Initialise parameters
         H_pl_initial = 0
         H_tl_initial = 0
@@ -406,6 +520,25 @@ class phs:
         return SOC_exp
     
     def transientAdjust(self, SOC_exp):
+        '''
+        Determine the reservoir volume adjustment based on the transient ramp times between each state of pumping and generating.
+
+        Parameters
+        ----------
+        SOC_exp : float
+            The tested state-of-charge assuming that the storage system follows the dispatch instructions, no transient adjustment.
+
+        Returns
+        -------
+        SOC_exp : float
+            The tested state-of-charge assuming that the storage system follows the dispatch instructions, with transient adjustment.
+
+        Side-effects
+        ------------
+        Update the RT_t attribute of all pumps and turbines.
+        Update the V_transient_adjust_t attribute of all pumps and turbines.
+        '''
+
         if (self.Q_turbine_penstock_t == self.Q_turbine_penstock_pre):
             
             for g in range(0,self.g_range):

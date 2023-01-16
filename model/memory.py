@@ -26,6 +26,9 @@ class memory:
         self.dailyCycles = [] # List of the number of cycles per day
         self.dispatched_capacity = [] # List of dispatched capacity for each dispatch interval
         self.data = []
+        self.SOC = [] # List of actual state-of-charge for each dispatch interval
+        self.powerMagnitude = [] # Magnitude of the charging/discharging power in each dispatch interval
+        self.eff_volt = [] # Voltage efficiency of the battery in each dispatch interval
 
 class memory_daily:
     '''Class of an object that stores daily charging data.'''
@@ -64,6 +67,7 @@ class memory_daily:
         self.R_cell_day = []
         self.SOC_max_day = []
         self.dispatch_prices = []
+        self.powerMagnitude = []
     
     def update_phs(self, behaviour, headLossPump, headPump, flowRatePump, headLossTurbine, headTurbine, flowRateTurbine, efficiencyTurbineDay):
         '''
@@ -78,14 +82,15 @@ class memory_daily:
         self.flowRateTurbine.append(flowRateTurbine)
         self.efficiencyTurbineDay.append(efficiencyTurbineDay)
 
-    def update_bess(self, calendarLossDay, cycleLossDay, R_cell_day, SOC_max_day):
+    def update_bess(self, calendarLossDay, cycleLossDay, R_cell_day, SOC_max_day, power):
         '''
         Update the data in the daily memory relevant to a battery system.
         '''
         self.calendarLossDay.append(calendarLossDay)
         self.cycleLossDay.append(cycleLossDay)
         self.R_cell_day.append(R_cell_day)
-        self.SOC_max_day.append(SOC_max_day)     
+        self.SOC_max_day.append(SOC_max_day)   
+        self.powerMagnitude.append(abs(power))  
 
     def update_general(self, chargingCapacity, dischargingCapacity, chargedEnergy, dischargedEnergy, SOC_day):
         '''

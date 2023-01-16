@@ -1,3 +1,5 @@
+'''Define the settlement calculation based upon the trading amounts of the storage system'''
+
 def settlementModel(storage_system_inst,energy,SP):
     '''
     Calculate the trading amounts for settlement at the end of the trading day.

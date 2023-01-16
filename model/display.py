@@ -28,7 +28,7 @@ from volatility import volatility
 display_arg = True
 
 # Define the test day
-test_day = 364
+test_day = -1 # Positive integer between 0 and 364 (inclusive)
 
 # Increase font size on plots
 mp.rcParams.update({'font.size': 28,
@@ -285,7 +285,7 @@ def schedulingOutputs(solution_inst, storage_system_inst, dispatch_offers, dispa
     else:
         legend_list = ["Charging Power", "Discharging Power", "Pre-dispatch Spot Price"]
         x_values = len(legend_list) * [trading_intervals]
-        y_values = [dispatch_bid_caps] + [dispatch_offer_caps]
+        y_values = [dispatch_bid_caps] + [dispatch_offer_caps] + [SPs]
         plotOutputs2d(x_values, y_values, "Trading Interval", "Scheduled Power [MW]", legend_list)
 
     # Plot bid and offer prices
@@ -463,14 +463,14 @@ def chargingOutputsAnnual(storage_system_inst, annual_memory):
 
     # Plot SOC vs time
     legend_list = ["SOC","Dispatch Price"]
-    dispatch_intervals = list(range(1,len(annual_memory.SOC)) + 1)
+    dispatch_intervals = list(range(1,len(annual_memory.SOC)+1))
     x_values = len(legend_list) * [dispatch_intervals]
-    y_values = [annual_memory.SOC] + [annual_memory.dispatch_prices] 
+    y_values = [annual_memory.SOC] + [annual_memory.DP] 
     plotOutputs2d(x_values, y_values, "Dispatch Interval", "State-of-charge", legend_list)
 
     # Plot 3d efficiency
     if storage_system_inst.type == "BESS":
-        plotOutputs3d(annual_memory.SOC, annual_memory.powerMagnitude, annual_memory.voltage_efficiency, "State-of-charge", "Power [MW]", "Voltage Efficiency", True)
+        plotOutputs3d(annual_memory.SOC, annual_memory.powerMagnitude, annual_memory.eff_volt, "State-of-charge", "Power [MW]", "Voltage Efficiency", True)
 
 def chargingOutputsLifetime(storage_system_inst, simulation_memory):
     '''Generate outputs for the simulation over the system lifetime.'''

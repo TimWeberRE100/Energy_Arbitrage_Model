@@ -191,7 +191,8 @@ def chargingModel(dispatchInstructions,day,year,storage_system_inst, market_inst
             daily_memory.update_bess(storage_system_inst.SOC_max_loss_cal,\
                 storage_system_inst.SOC_max_loss_cyc,\
                 storage_system_inst.R_cell,\
-                storage_system_inst.SOC_max)       
+                storage_system_inst.SOC_max,\
+                storage_system_inst.P_pre)       
     
     # Remove the initial values from the list
     daily_memory.SOC_day.pop(0)

@@ -1,3 +1,13 @@
+'''
+Determine the levelised cost of a storage system performing energy arbitrage.
+
+Functions
+---------
+dailySimulation
+
+main
+'''
+
 # Import external libraries
 import pandas as pd
 import numpy as np
@@ -25,10 +35,10 @@ import volatility
 import display
 import debug
 
-def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,forecasting_horizon,storage_system_inst, participant_inst, market_inst):
+def dailySimulation(SP,DP,day,total_days_cumulative,year_count,imperfectSP,forecasting_horizon,storage_system_inst, participant_inst, market_inst):
     
     '''
-    Simulate arbitrage over one trading day.
+    Simulate energy arbitrage over one trading day.
 
     Parameters
     ----------
@@ -38,8 +48,6 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
         List of dispatch prices for all trading intervals in the year.
     day : integer
         Count of days in the year at the current trading day.
-    year : integer
-        Year for which price data belongs.
     total_days_cumulative : integer
         Count of days in the simulation at the current trading day.
     year_count : integer
@@ -57,9 +65,30 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
 
     Returns
     -------
-    list
-        Outputs at the end of the trading day.
+    dispatchedCapacity : list
+        List of charging/discharging capacities at the connection point for each dispatch interval in the trading day.
+    TA_day : list
+        List of trading amounts for each dispatch interval in the trading day.
+    SP_day : list
+        List of spot prices for all trading intervals in the trading day.
+    daily_cycles : int
+        Number of charge/discharge cycles performed by the storage system in the trading day.
+    storage_system_inst : storage_system
+            Object containing storage system parameters and current state.
+    dispatchedEnergy : list
+        List of charged/discharged energy through the connection point for each dispatch interval in the trading day.
+    DP_day : list
+        List of dispatch prices for all dispatch intervals in the trading day.
+    SOC_day
+        List of the actual SOC for each dispatch interval in the trading day.
+    eff_volt_day
+        List of the voltage efficiencies of the battery for each dispatch interval in the trading day.
+    powerMagnitude_day
+        List of the magnitude of charging/discharging power for each dispatch interval in the trading day.
 
+    Side-effects
+    ------------
+    Current state of the storage system, including system degradation, is updated through some of the called functions.
     '''
     
     # Select the prices for the trading day
@@ -93,15 +122,18 @@ def dailySimulation(SP,DP,day,year,total_days_cumulative,year_count,imperfectSP,
     dispatchedEnergy = [chargingResults[0].dischargedEnergy,chargingResults[0].chargedEnergy]
     daily_cycles = chargingResults[1]
     storage_system_inst = chargingResults[2]
+    SOC_day = chargingResults[0].SOC_day
+    eff_volt_day = chargingResults[0].eff_volt_day
+    powerMagnitude_day = chargingResults[0].powerMagnitude
     
     # Determine settlement from actual charging behaviour 
     TA_day = settlement.settlementModel(storage_system_inst,dispatchedEnergy,SP_day)
         
-    return dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst, dispatchedEnergy, DP_day
+    return dispatchedCapacity, TA_day, SP_day, daily_cycles, storage_system_inst, dispatchedEnergy, DP_day, SOC_day, eff_volt_day, powerMagnitude_day
 
 def main(ifilename):
     '''
-    Main function runs the arbitrage simulation over the system lifetime.
+    Run the arbitrage simulation over the system lifetime.
 
     Parameters
     ----------
@@ -112,6 +144,10 @@ def main(ifilename):
     -------
     None.
 
+    Side-effects
+    ------------
+    Display plots and statistics for the simulation and test day specified in display.py
+    Write the results of the simulation to the ./results folder.
     '''
     # Build system assumptions dictionary
     system_assumptions = {pd.read_csv("assumptions/"+ifilename+"_ASSUMPTIONS.csv")['Assumption'][i]:pd.read_csv("assumptions/"+ifilename+"_ASSUMPTIONS.csv")['Value'][i] for i in range(0,len(pd.read_csv("assumptions/"+ifilename+"_ASSUMPTIONS.csv")['Assumption']))}
@@ -183,7 +219,7 @@ def main(ifilename):
         for day in range(0,total_days):
             print(ifilename, year, iteration, day)
             
-            dailyOutputs = dailySimulation(SP_List,DP_List,day,year,total_days_cumulative,iteration,imperfectSP_List,forecasting_horizon,storage_system_inst, participant_inst, market_inst)
+            dailyOutputs = dailySimulation(SP_List,DP_List,day,total_days_cumulative,iteration,imperfectSP_List,forecasting_horizon,storage_system_inst, participant_inst, market_inst)
             
             if storage_system_inst.type == "PHS":
                 annual_memory.dispatched_capacity.extend(sum(dailyOutputs[0][0][t]) if sum(dailyOutputs[0][0][t]) != 0 else sum(dailyOutputs[0][1][t]) if sum(dailyOutputs[0][1][t]) != 0 else 0 for t in range(0,288))
@@ -197,10 +233,13 @@ def main(ifilename):
             annual_memory.SP.extend(dailyOutputs[2])
             annual_memory.DP.extend(dailyOutputs[6])
             annual_memory.dailyCycles.append(dailyOutputs[3])
+            annual_memory.SOC.extend(dailyOutputs[7])
+            annual_memory.eff_volt.extend(dailyOutputs[8])
+            annual_memory.powerMagnitude.extend(dailyOutputs[9])
             storage_system_inst = dailyOutputs[4]
                 
             if day == display.test_day and display.display_arg:
-                display.chargingOutputsLifetime(storage_system_inst, annual_memory)
+                display.chargingOutputsAnnual(storage_system_inst, annual_memory)
         
         # Determine end of year results for systems with no degradation, assuming same discharging each year
         simulation_memory.TA_dis.append(sum(annual_memory.TA_dis))
@@ -213,6 +252,9 @@ def main(ifilename):
         simulation_memory.dispatched_capacity.extend(annual_memory.dispatched_capacity)
         simulation_memory.SP.extend(annual_memory.SP)
         simulation_memory.DP.extend(annual_memory.DP)
+        simulation_memory.SOC.extend(annual_memory.SOC)
+        simulation_memory.eff_volt.extend(annual_memory.eff_volt)
+        simulation_memory.powerMagnitude.extend(annual_memory.powerMagnitude)
 
         if storage_system_inst.type == "BESS":
             simulation_memory.finalRcell.append(storage_system_inst.R_cell)
@@ -247,8 +289,7 @@ def main(ifilename):
     if display.display_arg:
         display.chargingOutputsLifetime(storage_system_inst, simulation_memory)
 
-if __name__ == '__main__':
-    
+if __name__ == '__main__':    
     # Create dataframe of filenames
     result_filenames = pd.read_csv("result_filenames.csv")["Filename"].values.tolist()
     
@@ -260,4 +301,3 @@ if __name__ == '__main__':
     # Spawn workers and run the embarassingly parallel processes
     with concurrent.futures.ProcessPoolExecutor(max_workers=workersCount) as executor:
         results = executor.map(main, result_filenames)
-    
